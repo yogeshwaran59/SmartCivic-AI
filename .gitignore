@@ -1,0 +1,22 @@
+# Environment variables (secret API keys)
+backend/.env
+.env
+
+# Local SQLite databases
+*.db
+backend/smartcivic.db
+backend/test_smartcivic.db
+
+# Python virtual environment & cache
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# IDE & OS files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Temporary/Old executables
+.ngrok.exe.old

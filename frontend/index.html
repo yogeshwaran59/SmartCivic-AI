@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartCivic AI - Intelligent Complaint Management System</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet.js (GIS Map) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Leaflet Heatmap Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    
+    <!-- Leaflet Routing Machine -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+    <!-- App Container -->
+    <div class="app-container">
+        
+        <!-- Header -->
+        <header class="glass-header">
+            <div class="logo-area">
+                <div class="logo-icon"><i class="fa-solid fa-city"></i></div>
+                <div class="logo-text">
+                    <h1>SmartCivic <span>AI</span></h1>
+                    <p>City Issue Reporting & Dispatch System</p>
+                </div>
+            </div>
+            
+            <!-- Navbar Nav -->
+            <nav class="nav-links">
+                <button class="nav-btn active" data-tab="citizen-portal" id="btn-citizen"><i class="fa-solid fa-users"></i> Citizen Portal</button>
+                <button class="nav-btn" data-tab="authority-dashboard" id="btn-authority"><i class="fa-solid fa-shield-halved"></i> Authority Dashboard</button>
+                <button class="nav-btn" data-tab="worker-module" id="btn-worker"><i class="fa-solid fa-helmet-safety"></i> Worker Module</button>
+                <button class="nav-btn" data-tab="journalist-dashboard" id="btn-journalist"><i class="fa-solid fa-newspaper"></i> Journalist Dashboard</button>
+            </nav>
+
+            <!-- User Profile Banner -->
+            <div class="header-controls">
+                <div class="user-status-wrapper hidden" id="user-profile-banner">
+                    <span class="user-status-text"><i class="fa-solid fa-user-circle text-accent-indigo"></i> <strong id="lbl-user-name">Guest</strong> (<span id="lbl-user-role">citizen</span>)</span>
+                    <button class="btn-logout" id="btn-logout-session"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+                </div>
+                <button class="btn-login-header" id="btn-login-trigger"><i class="fa-solid fa-right-to-bracket"></i> Login / Register</button>
+                <div class="theme-toggle" id="theme-toggle-btn">
+                    <i class="fa-solid fa-moon"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            
+            <!-- CITIZEN PORTAL TAB -->
+            <section id="citizen-portal" class="tab-content active-tab">
+                <div class="citizen-grid">
+                    
+                    <!-- Left: Report Form -->
+                    <div class="glass-card citizen-form-card">
+                        <h2><i class="fa-solid fa-pen-to-square text-accent-teal"></i> Report a Civic Issue</h2>
+                        <p class="section-subtitle">File a complaint. AI automatically classifies and routes it.</p>
+
+
+                        
+                        <form id="report-form" enctype="multipart/form-data">
+                            <div class="form-group">
+                                <label for="form-category-preset"><i class="fa-solid fa-list-check"></i> Select Issue Category / Type</label>
+                                <select id="form-category-preset" class="form-select-category">
+                                    <option value="">-- Select Issue Category (Or Type Custom Details Below) --</option>
+                                    <option value="Pothole">Pothole</option>
+                                    <option value="Drainage">Drainage</option>
+                                    <option value="Garbage">Garbage</option>
+                                    <option value="Street Light">Street Light</option>
+                                    <option value="Footpath">Footpath</option>
+                                    <option value="Manhole">Manhole</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="form-description">Description of Issue</label>
+                                <textarea id="form-description" placeholder="Select from dropdown above or describe what is wrong (e.g. 'Huge pothole near metro pillar 15 causing traffic backlog', 'Smelly garbage pile overflowing on the main road')" required></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="form-contact">Your Contact Number</label>
+                                <input type="tel" id="form-contact" placeholder="e.g. +1 555-0199" required>
+                            </div>
+                            
+                            <!-- Location Section -->
+                            <div class="form-group">
+                                <div class="label-row">
+                                    <label>Issue Geolocation</label>
+                                    <button type="button" class="btn-small" id="btn-gps-detect"><i class="fa-solid fa-location-crosshairs"></i> Get Current GPS</button>
+                                </div>
+                                <div class="gps-coords">
+                                    <span>Lat: <strong id="val-latitude">12.971598</strong></span>
+                                    <span>Lng: <strong id="val-longitude">77.594562</strong></span>
+                                </div>
+                                <div class="map-picker-container">
+                                    <div id="map-picker"></div>
+                                    <span class="map-helper-text"><i class="fa-solid fa-circle-info"></i> Click on the map to pin the exact issue location.</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Image Section -->
+                            <div class="form-group">
+                                <label>Upload Proof Image (For AI Similarity & Duplicate Check)</label>
+                                <div class="file-drop-area">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                                    <span>Choose a photo or drag it here</span>
+                                    <input type="file" id="form-image" accept="image/*">
+                                </div>
+                                <div id="image-preview-container" class="hidden">
+                                    <img id="image-preview" src="" alt="Selected proof">
+                                    <button type="button" id="btn-remove-image"><i class="fa-solid fa-times"></i> Remove</button>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn-submit" id="btn-submit-complaint">
+                                <span class="btn-text">Submit Complaint</span>
+                                <span class="spinner hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <!-- Right: Search & Timeline Tracker -->
+                    <div class="right-citizen-panel">
+                        <!-- Duplicate Alert Notification (Appears when duplicate found) -->
+                        <div id="duplicate-warning" class="glass-card duplicate-card hidden">
+                            <div class="dup-header">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <h3>AI Duplicate Warning</h3>
+                            </div>
+                            <p>Our AI model identified an existing open complaint within 50 meters containing similar details. The issue has been linked, and its priority was verified.</p>
+                            <div class="dup-details">
+                                <span>Linked ID: <strong id="dup-linked-id">COMP-XXXX</strong></span>
+                                <button type="button" class="btn-small" id="btn-view-duplicate">Track Linked Complaint</button>
+                            </div>
+                        </div>
+
+                        <!-- Search Box -->
+                        <div class="glass-card search-card">
+                            <h2><i class="fa-solid fa-magnifying-glass text-accent-indigo"></i> Track Complaint Status</h2>
+                            <p class="section-subtitle">Enter your complaint tracking ID to see the live timeline.</p>
+                            <div class="search-box">
+                                <input type="text" id="search-complaint-id" placeholder="e.g. COMP-A4F9E3">
+                                <button type="button" id="btn-search-track"><i class="fa-solid fa-arrow-right"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Tracker Details / Timeline -->
+                        <div class="glass-card tracker-card hidden" id="tracker-result">
+                            <div class="tracker-header">
+                                <div>
+                                    <h3 id="track-id">COMP-XXXXXX</h3>
+                                    <span id="track-category" class="badge">Pothole</span>
+                                </div>
+                                <span id="track-status-badge" class="badge-status">Submitted</span>
+                            </div>
+                            
+                            <div class="escalation-alert-banner hidden" id="track-escalation-banner">
+                                <i class="fa-solid fa-triangle-exclamation fa-beat"></i>
+                                <span><strong>ESCALATED:</strong> Unresolved for > 48 hours. Routed to Supervisor.</span>
+                            </div>
+
+                            <div class="tracker-desc">
+                                <strong>Description:</strong>
+                                <p id="track-description">...</p>
+                            </div>
+
+                            <div class="tracker-image-box hidden" id="track-image-container">
+                                <strong>Attached Proof:</strong>
+                                <img id="track-image" src="" alt="Proof Image">
+                                <div class="image-analysis-box" id="track-image-analysis-box">
+                                    <span class="analysis-tag"><i class="fa-solid fa-brain text-accent-teal"></i> AI Image Analysis</span>
+                                    <p id="track-image-analysis-text">Scanning image matrices...</p>
+                                </div>
+                            </div>
+
+                            <div class="tracker-meta">
+                                <div><strong>Priority:</strong> <span id="track-priority" class="text-priority-high">High</span></div>
+                                <div><strong>Assigned Worker:</strong> <span id="track-worker">Not Assigned</span></div>
+                            </div>
+
+                            <!-- Timeline -->
+                            <div class="timeline-wrapper">
+                                <div class="timeline-line"></div>
+                                
+                                <div class="timeline-step" id="step-Submitted">
+                                    <div class="step-bullet"></div>
+                                    <div class="step-content">
+                                        <h4>Complaint Submitted</h4>
+                                        <p class="step-time" id="time-Submitted">-</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="timeline-step" id="step-Assigned">
+                                    <div class="step-bullet"></div>
+                                    <div class="step-content">
+                                        <h4>Worker Assigned</h4>
+                                        <p class="step-time" id="time-Assigned">-</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="timeline-step" id="step-InProgress">
+                                    <div class="step-bullet"></div>
+                                    <div class="step-content">
+                                        <h4>In Progress</h4>
+                                        <p class="step-time" id="time-InProgress">-</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="timeline-step" id="step-Resolved">
+                                    <div class="step-bullet"></div>
+                                    <div class="step-content">
+                                        <h4>Resolved</h4>
+                                        <p class="step-time" id="time-Resolved">-</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Public Complaints Feed -->
+                <div class="glass-card citizen-feed-section" style="margin-top: 24px;">
+                    <h2><i class="fa-solid fa-list-check text-accent-indigo"></i> Public Civic Dashboard</h2>
+                    <p class="section-subtitle">Browse recently reported city complaints, their categories, live status, and assigned dispatch workers.</p>
+                    <div class="citizen-complaints-list" id="citizen-complaints-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 16px;">
+                        <p class="empty-list-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading public city logs...</p>
+                    </div>
+                <!-- Citizen Regional Complaint Heatmap -->
+                <div class="glass-card heatmap-card-container" style="margin-top: 24px;">
+                    <div class="heatmap-header">
+                        <div>
+                            <h2><i class="fa-solid fa-map-location-dot text-accent-indigo"></i> Regional Complaint Heatmap</h2>
+                            <p class="section-subtitle">Live severity heatmap across city wards. Red = High complaints, Yellow = Moderate, Green = Low.</p>
+                        </div>
+                        <div class="heatmap-legend-pills">
+                            <span class="heatmap-pill pill-red"><i class="fa-solid fa-circle"></i> High (> 5)</span>
+                            <span class="heatmap-pill pill-yellow"><i class="fa-solid fa-circle"></i> Moderate (3 - 5)</span>
+                            <span class="heatmap-pill pill-green"><i class="fa-solid fa-circle"></i> Low (1 - 2)</span>
+                        </div>
+                    </div>
+                    <div id="map-citizen-heatmap" class="gis-heatmap-box"></div>
+                </div>
+            </section>
+            
+            <!-- AUTHORITY DASHBOARD TAB -->
+            <section id="authority-dashboard" class="tab-content">
+                <!-- Stats Overview Grid -->
+                <div class="stats-grid">
+                    <div class="glass-card stat-box border-indigo">
+                        <div class="stat-icon"><i class="fa-solid fa-folder-open text-accent-indigo"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-total-issues">0</h3>
+                            <p>Total Complaints</p>
+                        </div>
+                    </div>
+                    <div class="glass-card stat-box border-amber">
+                        <div class="stat-icon"><i class="fa-solid fa-clock text-accent-amber"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-pending-issues">0</h3>
+                            <p>Pending Resolution</p>
+                        </div>
+                    </div>
+                    <div class="glass-card stat-box border-emerald">
+                        <div class="stat-icon"><i class="fa-solid fa-circle-check text-accent-emerald"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-resolved-issues">0</h3>
+                            <p>Resolved Issues</p>
+                        </div>
+                    </div>
+                    <div class="glass-card stat-box border-rose">
+                        <div class="stat-icon"><i class="fa-solid fa-circle-exclamation text-priority-high"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-escalated-issues">0</h3>
+                            <p>48h Escalations</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Authority GIS Regional Complaint Heatmap -->
+                <div class="glass-card heatmap-card-container" style="margin-bottom: 24px;">
+                    <div class="heatmap-header">
+                        <div>
+                            <h2><i class="fa-solid fa-fire text-priority-high"></i> Citywide Regional Complaint Density Heatmap</h2>
+                            <p class="section-subtitle">Real-time GIS density overlay of civic complaints across wards to prioritize resource allocation.</p>
+                        </div>
+                        <div class="heatmap-legend-pills">
+                            <span class="heatmap-pill pill-red"><i class="fa-solid fa-circle"></i> High Severity (> 5)</span>
+                            <span class="heatmap-pill pill-yellow"><i class="fa-solid fa-circle"></i> Moderate (3 - 5)</span>
+                            <span class="heatmap-pill pill-green"><i class="fa-solid fa-circle"></i> Low (1 - 2)</span>
+                        </div>
+                    </div>
+                    <div id="map-authority-heatmap" class="gis-heatmap-box"></div>
+                </div>
+
+                <!-- Table & Filters Section -->
+
+                <div class="dashboard-table-section glass-card">
+                    <div class="table-header">
+                        <h2><i class="fa-solid fa-list-check text-accent-indigo"></i> Active Complaints Registry</h2>
+                        
+                        <!-- Filters -->
+                        <div class="filters-row">
+                            <div class="filter-group">
+                                <label for="filter-status">Status:</label>
+                                <select id="filter-status">
+                                    <option value="">All</option>
+                                    <option value="Submitted">Submitted</option>
+                                    <option value="Assigned">Assigned</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Resolved">Resolved</option>
+                                    <option value="Closed">Closed</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filter-priority">Priority:</label>
+                                <select id="filter-priority">
+                                    <option value="">All</option>
+                                    <option value="High">High</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="Low">Low</option>
+                                </select>
+                            </div>
+                            <!-- Ward filter removed -->
+                            <button id="btn-refresh-dashboard" class="btn-refresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                        </div>
+                    </div>
+
+                    <!-- Complaints Table -->
+                    <div class="table-scroll-container">
+                        <table class="dashboard-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Category</th>
+                                    <th>Description</th>
+                                    <th>Priority</th>
+                                    <th>Status</th>
+                                    <th>Reported Date</th>
+                                    <th>Assigned Worker</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="complaints-table-body">
+                                <tr>
+                                    <td colspan="9" class="empty-table-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading complaints database...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Assignment Modal (Glassmorphic popup) -->
+                <div id="assignment-modal" class="modal-overlay hidden">
+                    <div class="glass-card modal-content">
+                        <div class="modal-header">
+                            <h3><i class="fa-solid fa-user-plus text-accent-teal"></i> Assign Task to Worker</h3>
+                            <button class="btn-close-modal" id="btn-close-assignment-modal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="assignment-info-summary">
+                                <p><strong>Complaint ID:</strong> <span id="modal-complaint-id">COMP-XXXX</span></p>
+                                <p><strong>Category:</strong> <span id="modal-complaint-category" class="badge">Pothole</span></p>
+                                <p><strong>Description:</strong> <span id="modal-complaint-desc">...</span></p>
+                            </div>
+                            <hr class="modal-separator">
+                            <form id="assign-worker-form">
+                                <input type="hidden" id="modal-hidden-complaint-id">
+                                <div class="form-group">
+                                    <label for="modal-worker-select">Select Dispatch Worker</label>
+                                    <select id="modal-worker-select" required>
+                                        <option value="">-- Choose Worker --</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="modal-priority-select">Adjust Priority (Heuristically Classified)</label>
+                                    <select id="modal-priority-select">
+                                        <option value="High">High</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="Low">Low</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn-submit" id="btn-confirm-assignment">Assign & Notify Worker</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="analytics-charts-grid">
+                    <div class="glass-card chart-container">
+                        <h3><i class="fa-solid fa-chart-pie text-accent-indigo"></i> Issue Categories Distribution</h3>
+                        <canvas id="chart-categories"></canvas>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- WORKER MODULE TAB -->
+            <section id="worker-module" class="tab-content">
+                <div class="worker-grid">
+                    <!-- Left Panel: Job List -->
+                    <div class="glass-card worker-jobs-panel">
+                        <h2><i class="fa-solid fa-toolbox text-accent-amber"></i> Worker Task Board</h2>
+                        <div class="worker-info-banner">
+                            <p>Active User: <strong id="val-worker-name">Not Selected</strong></p>
+                        </div>
+                        
+                        <div class="worker-jobs-list" id="worker-jobs-list">
+                            <p class="empty-jobs-message">Please select a Worker Profile from the top-right header to view tasks.</p>
+                        </div>
+                    </div>
+
+                    <!-- Right Panel: Navigation and Work Action -->
+                    <div class="glass-card worker-work-panel hidden" id="worker-work-area">
+                        <div class="worker-work-header">
+                            <div>
+                                <span class="badge-status badge-active" id="work-active-id">COMP-XXXX</span>
+                                <h3 id="work-active-category">Garbage Dump Cleanup</h3>
+                            </div>
+                            <button class="btn-back-jobs" id="btn-close-work-area"><i class="fa-solid fa-times"></i> Close Map</button>
+                        </div>
+
+                        <!-- Action controls -->
+                        <div class="worker-action-steps">
+                            <div class="action-step-item">
+                                <div class="step-num">1</div>
+                                <div class="step-details">
+                                    <h4>Route Navigation</h4>
+                                    <p>Follow GPS directions on GIS map below.</p>
+                                </div>
+                            </div>
+                             <div class="action-step-item">
+                                <div class="step-num">2</div>
+                                <div class="step-details" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                                    <h4>Site Action & Progress Log</h4>
+                                    <button class="btn-worker-status" id="btn-toggle-in-progress">Mark "In Progress"</button>
+                                    <div id="worker-log-input-group" class="hidden" style="display: flex; gap: 8px; width: 100%; margin-top: 4px;">
+                                        <input type="text" id="worker-progress-notes" placeholder="Add site update (e.g. 'Arrived', '50% cleaned')" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
+                                        <button type="button" class="btn-submit-blue" id="btn-worker-add-notes" style="padding: 8px 12px; font-size: 0.85rem; border-radius: 8px;"><i class="fa-solid fa-plus"></i> Log</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="action-step-item">
+                                <div class="step-num">3</div>
+                                <div class="step-details">
+                                    <h4>Complete Resolution</h4>
+                                    <button class="btn-worker-resolve" id="btn-open-resolve-modal">Resolve Task</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- GIS Route Map -->
+                        <div class="worker-map-wrapper">
+                            <div id="map-worker-route"></div>
+                            <div class="map-route-legend">
+                                <span><i class="fa-solid fa-user-location text-accent-teal"></i> Worker Location (Mocked)</span>
+                                <span><i class="fa-solid fa-triangle-exclamation text-accent-amber"></i> Complaint Location</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resolve Complaint Modal -->
+                <div id="resolve-modal" class="modal-overlay hidden">
+                    <div class="glass-card modal-content">
+                        <div class="modal-header">
+                            <h3><i class="fa-solid fa-clipboard-check text-accent-emerald"></i> Resolve Complaint</h3>
+                            <button class="btn-close-modal" id="btn-close-resolve-modal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="resolve-task-form">
+                                <input type="hidden" id="resolve-hidden-complaint-id">
+                                <div class="form-group">
+                                    <label>Upload Resolution Photo Proof</label>
+                                    <div class="file-drop-area">
+                                        <i class="fa-solid fa-camera"></i>
+                                        <span>Choose resolved photo</span>
+                                        <input type="file" id="resolve-image" accept="image/*" required>
+                                    </div>
+                                    <div id="resolve-preview-container" class="hidden">
+                                        <img id="resolve-preview" src="" alt="Resolution preview">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="resolve-notes">Completion Notes</label>
+                                    <textarea id="resolve-notes" placeholder="Write details about the repair/cleanup performed..." required></textarea>
+                                </div>
+                                <button type="submit" class="btn-submit btn-emerald-submit" id="btn-confirm-resolve">Submit Resolution</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- JOURNALIST DASHBOARD TAB -->
+            <section id="journalist-dashboard" class="tab-content">
+                <div class="journalist-grid">
+                    <!-- Left Column: Redirected Issues list -->
+                    <div class="glass-card journalist-left-panel">
+                        <h2><i class="fa-solid fa-triangle-exclamation text-priority-high"></i> Unopened Complaints</h2>
+                        <p class="section-subtitle">Issues redirected to press watchdogs after 5 mins of authority inactivity.</p>
+                        <div id="journalist-redirect-list" class="journalist-list">
+                            <p class="empty-list-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading redirected complaints...</p>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: AI Agent Report Station -->
+                    <div class="glass-card journalist-right-panel hidden" id="journalist-station">
+                        <div class="station-header">
+                            <h3><i class="fa-solid fa-microchip text-accent-indigo"></i> AI Agent Report Station</h3>
+                            <button class="btn-close-station" id="btn-close-journalist-station">&times;</button>
+                        </div>
+                        <div class="station-complaint-summary" id="station-complaint-summary">
+                            <!-- Complaint details loaded dynamically -->
+                        </div>
+                        
+                        <div class="ai-agent-console-box">
+                            <button class="btn-submit-blue" id="btn-trigger-ai-agent">
+                                <i class="fa-solid fa-robot"></i> Run AI Investigative Agent
+                            </button>
+                            
+                            <!-- Progress Loader -->
+                            <div class="ai-loader-container hidden" id="ai-agent-loader">
+                                <div class="ai-spinner"></div>
+                                <span class="ai-loader-text">AI Agent scanning database & writing report...</span>
+                            </div>
+                        </div>
+
+                        <!-- Editor Form -->
+                        <div class="ai-report-editor-box hidden" id="ai-report-editor">
+                            <hr class="modal-separator">
+                            <form id="journalist-report-form">
+                                <input type="hidden" id="report-hidden-complaint-id">
+                                <div class="form-group">
+                                    <label class="uppercase-label">Article Title</label>
+                                    <input type="text" id="report-title-input" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="uppercase-label">Article Body Content</label>
+                                    <textarea id="report-content-input" rows="12" required></textarea>
+                                </div>
+                                <div class="form-actions-row">
+                                    <button type="button" class="btn-submit" id="btn-save-draft"><i class="fa-solid fa-floppy-disk"></i> Save Draft</button>
+                                    <button type="submit" class="btn-submit-blue" id="btn-publish-report"><i class="fa-solid fa-paper-plane"></i> Publish Report</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom Section: Published Articles Feed -->
+                <div class="glass-card journalist-feed-section">
+                    <h2><i class="fa-solid fa-bullhorn text-accent-teal"></i> Published Press Room</h2>
+                    <p class="section-subtitle">Watchdog articles live and broadcasted to public press feeds.</p>
+                    <div class="published-articles-grid" id="published-articles-feed">
+                        <p class="empty-list-message">No articles published to press feeds yet.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- GLOBAL NAVIGATION MAP MODAL -->
+        <div class="modal-overlay hidden" id="navigation-modal" style="z-index: 100000;">
+            <div class="modal-content" style="max-width: 800px; width: 90%; height: 85vh; display: flex; flex-direction: column; padding: 24px; background: rgba(15, 23, 42, 0.95); border: 1px solid var(--panel-border); box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+                <div class="modal-header" style="margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+                    <h3 style="font-family: var(--font-heading); font-size: 1.25rem;"><i class="fa-solid fa-map-location-dot text-accent-indigo"></i> GPS Navigation Route</h3>
+                    <button class="btn-close-modal" id="btn-close-navigation-modal">&times;</button>
+                </div>
+                <div class="modal-body" style="flex: 1; display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; min-height: 0;">
+                    <!-- Map Column -->
+                    <div style="position: relative; display: flex; flex-direction: column; height: 100%;">
+                        <div id="map-modal-navigation" style="flex: 1; border-radius: 12px; border: 1px solid var(--panel-border); min-height: 250px; background: #1e293b;"></div>
+                        <div style="margin-top: 12px;">
+                            <button class="btn-submit-blue" id="btn-open-real-google-maps" style="margin-top: 0; padding: 12px 18px; font-size: 0.88rem; border-radius: 8px;">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i> Open in Google Maps
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Directions Steps Column -->
+                    <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; overflow-y: auto;">
+                        <h4 style="margin-bottom: 12px; border-bottom: 1px solid var(--panel-border); padding-bottom: 6px; color: var(--text-primary); font-family: var(--font-heading); font-size: 0.95rem;">
+                            <i class="fa-solid fa-location-arrow"></i> Turn-by-Turn Directions
+                        </h4>
+                        <div id="navigation-steps-list" style="display: flex; flex-direction: column; gap: 12px; font-size: 0.85rem; color: var(--text-secondary);">
+                            <!-- Step items rendered dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Live Notifications Banner -->
+        <div class="notification-toast hidden" id="notification-toast">
+            <div class="toast-icon"><i class="fa-solid fa-bell"></i></div>
+            <div class="toast-body">
+                <h4 id="toast-title">Notification</h4>
+                <p id="toast-message">Message details...</p>
+            </div>
+                            <button class="toast-close" id="btn-close-toast">&times;</button>
+        </div>
+
+        <!-- AUTHENTICATION DIALOG (BLOCKING OVERLAY) -->
+        <div id="auth-modal" class="modal-overlay">
+            <div class="auth-card">
+                <button class="btn-close-modal" id="btn-close-auth-modal">&times;</button>
+
+                <!-- Signup Panel -->
+                <div id="signup-panel" class="auth-panel hidden">
+                    <h2 class="auth-title">Create Account</h2>
+                    <p class="auth-subtitle">Join the SmartCivic platform</p>
+                    <form id="signup-form">
+                        <div class="form-group">
+                            <label class="uppercase-label">Full Name</label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-user"></i>
+                                <input type="text" id="signup-name" placeholder="John Doe" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="uppercase-label">Role</label>
+                            <div class="role-selector-row">
+                                <button type="button" class="role-card active" data-role="citizen">
+                                    <i class="fa-solid fa-user"></i>
+                                    <span>CITIZEN</span>
+                                </button>
+                                <button type="button" class="role-card" data-role="worker">
+                                    <i class="fa-solid fa-helmet-safety"></i>
+                                    <span>WORKER</span>
+                                </button>
+                                <button type="button" class="role-card" data-role="authority">
+                                    <i class="fa-solid fa-shield-halved"></i>
+                                    <span>AUTHORITY</span>
+                                </button>
+                                <button type="button" class="role-card" data-role="journalist">
+                                    <i class="fa-solid fa-newspaper"></i>
+                                    <span>JOURNALIST</span>
+                                </button>
+                            </div>
+                            <!-- Hidden input to store chosen role -->
+                            <input type="hidden" id="signup-role" value="citizen">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="uppercase-label">Email Address</label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-envelope"></i>
+                                <input type="email" id="signup-gmail" placeholder="name@example.com" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="uppercase-label">Password</label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-lock"></i>
+                                <input type="password" id="signup-password" placeholder="••••••••" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="uppercase-label">Contact Phone Number</label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-phone"></i>
+                                <input type="tel" id="signup-contact" placeholder="+1 555-0101" required>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-submit-blue">Create Account</button>
+                        
+                        <div class="auth-switch-text">
+                            Already have an account? <span id="link-go-to-login" class="switch-link">Sign in</span>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Login Panel -->
+                <div id="login-panel" class="auth-panel">
+                    <h2 class="auth-title">Welcome Back</h2>
+                    <p class="auth-subtitle">Sign in to your SmartCivic account</p>
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label class="uppercase-label">Email Address</label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-envelope"></i>
+                                <input type="email" id="login-gmail" placeholder="name@example.com" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="uppercase-label">Password</label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-lock"></i>
+                                <input type="password" id="login-password" placeholder="••••••••" required>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-submit-blue">Sign In</button>
+                        
+                        <div class="auth-switch-text">
+                            Don't have an account? <span id="link-go-to-signup" class="switch-link">Sign up</span>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="auth-error-banner hidden" id="auth-error-msg">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span id="auth-error-text">Incorrect credentials. Please try again.</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>
