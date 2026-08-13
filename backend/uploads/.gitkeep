@@ -1,1 +1,2 @@
-# Keep uploads folder tracked in git
+# This file ensures the uploads/ directory is tracked by Git.
+# Uploaded complaint images are gitignored (user-generated data).

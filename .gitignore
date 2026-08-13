@@ -1,22 +1,68 @@
-# Environment variables (secret API keys)
+# ========================
+# Environment & Secrets
+# ========================
 backend/.env
 .env
 
-# Local SQLite databases
+# ========================
+# Databases (local SQLite)
+# ========================
 *.db
-backend/smartcivic.db
-backend/test_smartcivic.db
 
-# Python virtual environment & cache
+# ========================
+# Python
+# ========================
 .venv/
 venv/
+env/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
 
-# IDE & OS files
+# ========================
+# Uploaded files (user-generated, not source code)
+# Keep the directory structure via .gitkeep
+# ========================
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# ========================
+# IDE & Editor
+# ========================
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ========================
+# OS generated files
+# ========================
 .DS_Store
 Thumbs.db
+Desktop.ini
+ehthumbs.db
 
-# Temporary/Old executables
+# ========================
+# Executables & binaries
+# ========================
+*.exe
+*.exe.old
 .ngrok.exe.old
+ngrok.exe
+
+# ========================
+# Dev-only notes (not for the repo)
+# ========================
+SESSION_SUMMARY.md
+task.md
+
+# ========================
+# Misc
+# ========================
+*.log
+node_modules/

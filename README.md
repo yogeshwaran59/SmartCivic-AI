@@ -45,9 +45,12 @@ project/
 │   ├── app.css              # Glassmorphic dark styling & responsive design
 │   └── app.js               # Frontend JavaScript logic & Leaflet map integrations
 ├── alter_db.py              # Database schema migration helper
-├── task.md                  # Development task tracker
-└── README.md                # Project documentation
+├── setup.bat                # One-click setup for Windows
+├── setup.sh                 # One-click setup for Mac / Linux
+├── .gitignore               # Git ignore rules
+└── README.md                # Project documentation (this file)
 ```
+
 
 ---
 
@@ -56,9 +59,10 @@ project/
 Follow these steps to run the complete project locally:
 
 ### 1. Prerequisites
-- **Python 3.9+** installed
-- **Git** installed
-- **ngrok** (optional, for testing Exotel IVR call hotline locally)
+- **Python 3.9+** installed ([download](https://www.python.org/downloads/))
+- **Git** installed ([download](https://git-scm.com/downloads))
+- **pip** (comes bundled with Python)
+- **ngrok** (optional, only needed for testing Exotel IVR hotline locally)
 
 ### 2. Clone the Repository
 ```bash
@@ -66,7 +70,29 @@ git clone <your-repository-url>
 cd project
 ```
 
-### 3. Create & Activate Virtual Environment
+### 3. Quick Setup (Recommended)
+
+**Windows** — double-click or run in terminal:
+```powershell
+.\setup.bat
+```
+
+**Mac / Linux:**
+```bash
+bash setup.sh
+```
+
+This will automatically:
+- Create a `.venv` virtual environment
+- Install all Python dependencies
+- Copy `.env.example` → `.env` (you'll need to fill in your credentials)
+
+### 4. Manual Setup (If you prefer)
+
+<details>
+<summary>Click to expand manual steps</summary>
+
+#### Create & Activate Virtual Environment
 
 **Windows (PowerShell):**
 ```powershell
@@ -80,14 +106,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 4. Install Dependencies
+#### Install Dependencies
 ```bash
 pip install -r backend/requirements.txt
 ```
 
-### 5. Configure Environment Variables
-Create a file named `.env` inside the `backend/` folder by copying `.env.example`:
-
+#### Configure Environment Variables
 ```bash
 cp backend/.env.example backend/.env
 ```
@@ -105,21 +129,34 @@ EXOTEL_SUBDOMAIN=api.exotel.com
 EXOTEL_CALLER_ID=your_exotel_caller_id
 ```
 
+</details>
+
 > **Note:** If `DATABASE_URL` is provided, all team members will share the same live PostgreSQL database on Neon. If `DATABASE_URL` is omitted, Flask will fallback to a local SQLite database (`backend/smartcivic.db`).
 
 ---
 
 ## 🏃 Running the Application
 
-### 1. Start the Flask Server
-Run from the root directory:
+### 1. Activate Virtual Environment (if not already active)
+
+**Windows:**
+```powershell
+.\.venv\Scripts\activate
+```
+
+**Mac / Linux:**
+```bash
+source .venv/bin/activate
+```
+
+### 2. Start the Flask Server
 ```bash
 python backend/app.py
 ```
 The application will start at:
 👉 **`http://127.0.0.1:5000`** (or `http://localhost:5000`)
 
-### 2. Access Web Application
+### 3. Access Web Application
 Open your browser and navigate to `http://127.0.0.1:5000`. You can log in using default seed accounts or create a new user account on the signup page.
 
 ---
@@ -138,3 +175,16 @@ Open your browser and navigate to `http://127.0.0.1:5000`. You can log in using 
    - **Passthru** → URL: `https://xxxx.ngrok-free.dev/api/exotel/webhook` (Method: POST/GET)
    - **Greeting** → Thank you confirmation & Hangup
 5. Save the flow and dial your Exotel phone number!
+
+---
+
+## 🔧 Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `python` not recognized | Use `python3` instead, or add Python to your system PATH |
+| `pip install` fails | Make sure your virtual environment is activated first |
+| Port 5000 already in use | Kill the existing process or change the port in `backend/app.py` |
+| Database errors on first run | The database is auto-created on startup — just restart the server |
+| `.env` not loading | Ensure `backend/.env` exists (copy from `backend/.env.example`) |
+
