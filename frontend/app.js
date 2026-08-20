@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initForms();
     initJournalistEvents();
+    initNotifications();
     
     // Start auto-refreshing dashboard data every 5 seconds (to fetch new IVR calls & worker assignments too!)
     autoRefreshTimer = setInterval(() => {
@@ -122,11 +123,24 @@ function initAuth() {
     // Role selection cards click logic
     const roleCards = document.querySelectorAll('.role-card');
     const roleInput = document.getElementById('signup-role');
+    const adminKeyGroup = document.getElementById('signup-admin-key-group');
+    const adminKeyInput = document.getElementById('signup-admin-key');
+
     roleCards.forEach(card => {
         card.addEventListener('click', () => {
             roleCards.forEach(c => c.classList.remove('active'));
             card.classList.add('active');
-            roleInput.value = card.getAttribute('data-role');
+            const chosenRole = card.getAttribute('data-role');
+            roleInput.value = chosenRole;
+
+            if (chosenRole !== 'citizen') {
+                adminKeyGroup.classList.remove('hidden');
+                adminKeyInput.setAttribute('required', 'required');
+            } else {
+                adminKeyGroup.classList.add('hidden');
+                adminKeyInput.removeAttribute('required');
+                adminKeyInput.value = '';
+            }
         });
     });
 
@@ -143,12 +157,13 @@ function initAuth() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ gmail, password })
         })
-        .then(res => {
+        .then(async res => {
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                if (res.status === 401) throw new Error('Invalid Gmail address or password.');
-                throw new Error('Server connection error.');
+                if (res.status === 401) throw new Error(data.error || 'Invalid Gmail address or password.');
+                throw new Error(data.error || 'Server connection error.');
             }
-            return res.json();
+            return data;
         })
         .then(user => {
             saveSession(user);
@@ -170,18 +185,20 @@ function initAuth() {
         const password = document.getElementById('signup-password').value;
         const role = document.getElementById('signup-role').value;
         const contact = document.getElementById('signup-contact').value.trim();
+        const admin_key = document.getElementById('signup-admin-key').value.trim();
 
         fetch(`${API_BASE}/api/auth/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, gmail, password, role, contact })
+            body: JSON.stringify({ name, gmail, password, role, contact, admin_key })
         })
-        .then(res => {
+        .then(async res => {
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                if (res.status === 409) throw new Error('A user with this Gmail already exists.');
-                throw new Error('Failed to register account.');
+                if (res.status === 409) throw new Error(data.error || 'A user with this Gmail already exists.');
+                throw new Error(data.error || 'Failed to register account.');
             }
-            return res.json();
+            return data;
         })
         .then(user => {
             saveSession(user);
@@ -287,6 +304,20 @@ function initTabs() {
 }
 
 function switchTab(tabId) {
+    // Access Control Guards for Private Dashboards
+    if (tabId === 'authority-dashboard' && (!currentUser || currentUser.role !== 'authority')) {
+        showToast('Access Denied', 'The Corporate/Authority Dashboard is restricted to authorized authority personnel.', 'error');
+        return;
+    }
+    if (tabId === 'worker-module' && (!currentUser || currentUser.role !== 'worker')) {
+        showToast('Access Denied', 'The Worker Module is restricted to assigned maintenance workers.', 'error');
+        return;
+    }
+    if (tabId === 'journalist-dashboard' && (!currentUser || currentUser.role !== 'journalist')) {
+        showToast('Access Denied', 'The Journalist Dashboard is restricted to authorized press accounts.', 'error');
+        return;
+    }
+
     activeTab = tabId;
     
     // Update nav links active states
@@ -350,6 +381,22 @@ function initMaps() {
     pickerMap.on('click', function (e) {
         pickerMarker.setLatLng(e.latlng);
         updateCoordsInForm(e.latlng.lat, e.latlng.lng);
+    });
+
+    // Leaflet Native Location Events
+    pickerMap.on('locationfound', function (e) {
+        pickerMarker.setLatLng(e.latlng);
+        updateCoordsInForm(e.latlng.lat, e.latlng.lng);
+        const btnGps = document.getElementById('btn-gps-detect');
+        if (btnGps) btnGps.innerHTML = '<i class="fa-solid fa-check"></i> Device GPS';
+        showToast('GPS Location Found', `Set coordinates to device location (Accuracy: ±${Math.round(e.accuracy)}m)`, 'success');
+    });
+
+    pickerMap.on('locationerror', function (e) {
+        console.warn("Leaflet location error:", e.message);
+        if (window.triggerIpLocationFallback) {
+            window.triggerIpLocationFallback();
+        }
     });
 
     // 2. Citizen Heatmap Map
@@ -512,35 +559,114 @@ function initForms() {
         });
     }
 
-    // Citizen GPS fetch
+    // Citizen GPS & Network Location fetch
     const btnGps = document.getElementById('btn-gps-detect');
-    btnGps.addEventListener('click', () => {
-        if (navigator.geolocation) {
+    
+    window.triggerIpLocationFallback = () => {
+        if (window.isGpsResolved) return;
+        window.isGpsResolved = true;
+
+        fetch('https://ipapi.co/json/')
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.latitude && data.longitude) {
+                    pickerMarker.setLatLng([data.latitude, data.longitude]);
+                    pickerMap.setView([data.latitude, data.longitude], 15);
+                    updateCoordsInForm(data.latitude, data.longitude);
+                    btnGps.innerHTML = '<i class="fa-solid fa-check"></i> Network Location';
+                    showToast('Location Detected', `Detected location near ${data.city || 'your area'}, ${data.region || ''}`, 'success');
+                } else {
+                    throw new Error('Invalid IP location data');
+                }
+            })
+            .catch(() => {
+                const lat = pickerMarker.getLatLng().lat || DEFAULT_LAT;
+                const lng = pickerMarker.getLatLng().lng || DEFAULT_LNG;
+                pickerMarker.setLatLng([lat, lng]);
+                pickerMap.setView([lat, lng], 15);
+                updateCoordsInForm(lat, lng);
+                btnGps.innerHTML = '<i class="fa-solid fa-check"></i> Location Set';
+                showToast('Location Updated', 'Set location. Click anywhere on the map to pin exact location.', 'info');
+            });
+    };
+
+    if (btnGps) {
+        btnGps.addEventListener('click', () => {
             btnGps.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Locating...';
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    pickerMarker.setLatLng([lat, lng]);
-                    pickerMap.setView([lat, lng], 15);
-                    updateCoordsInForm(lat, lng);
-                    btnGps.innerHTML = '<i class="fa-solid fa-check"></i> GPS Sync';
-                    showToast('Location Detected', 'Set coordinates to your browser location.', 'success');
-                },
-                (error) => {
-                    // Fallback to randomized local area coords
-                    const randLat = DEFAULT_LAT + (Math.random() - 0.5) * 0.04;
-                    const randLng = DEFAULT_LNG + (Math.random() - 0.5) * 0.04;
-                    pickerMarker.setLatLng([randLat, randLng]);
-                    pickerMap.setView([randLat, randLng], 14);
-                    updateCoordsInForm(randLat, randLng);
-                    btnGps.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Mock Location';
-                    showToast('GPS Timeout', 'Using local mock coordinates for demo environment.', 'info');
-                },
-                { timeout: 6000 }
-            );
+            window.isGpsResolved = false;
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        window.isGpsResolved = true;
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        pickerMarker.setLatLng([lat, lng]);
+                        pickerMap.setView([lat, lng], 15);
+                        updateCoordsInForm(lat, lng);
+                        btnGps.innerHTML = '<i class="fa-solid fa-check"></i> Device GPS';
+                        showToast('Device GPS Detected', `Coordinates updated to your device location.`, 'success');
+                    },
+                    (error) => {
+                        console.warn("Hardware GPS failed/timed out, invoking network fallback...", error);
+                        window.triggerIpLocationFallback();
+                    },
+                    { enableHighAccuracy: true, timeout: 3500, maximumAge: 0 }
+                );
+            } else {
+                window.triggerIpLocationFallback();
+            }
+        });
+    }
+
+    // Address Search Location Pinning
+    const inputSearchAddr = document.getElementById('input-search-address');
+    const btnSearchAddr = document.getElementById('btn-search-address');
+
+    const performAddressSearch = () => {
+        const query = inputSearchAddr.value.trim();
+        if (!query) {
+            showToast('Search Empty', 'Please enter a street, area, or landmark name to search.', 'warning');
+            return;
         }
-    });
+
+        btnSearchAddr.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Searching...';
+
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+            .then(res => res.json())
+            .then(data => {
+                btnSearchAddr.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Search';
+                if (data && data.length > 0) {
+                    const result = data[0];
+                    const lat = parseFloat(result.lat);
+                    const lng = parseFloat(result.lon);
+
+                    pickerMarker.setLatLng([lat, lng]);
+                    pickerMap.setView([lat, lng], 16);
+                    updateCoordsInForm(lat, lng);
+
+                    btnGps.innerHTML = '<i class="fa-solid fa-check"></i> Address Found';
+                    const shortName = result.display_name.split(',').slice(0, 3).join(',');
+                    showToast('Location Found', `Pinned to: ${shortName}`, 'success');
+                } else {
+                    showToast('Location Not Found', 'Could not find that exact address. Try typing a broader area or landmark.', 'warning');
+                }
+            })
+            .catch(err => {
+                btnSearchAddr.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Search';
+                showToast('Search Error', 'Failed to connect to location search service.', 'error');
+            });
+    };
+
+    if (btnSearchAddr && inputSearchAddr) {
+        btnSearchAddr.addEventListener('click', performAddressSearch);
+        inputSearchAddr.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                performAddressSearch();
+            }
+        });
+    }
 
     // Image Upload Previews
     const imageInput = document.getElementById('form-image');
@@ -990,6 +1116,7 @@ function renderComplaintsTable(complaints) {
 
     complaints.forEach(c => {
         const row = document.createElement('tr');
+        row.id = `complaint-row-${c.complaint_id}`;
         
         const rDate = new Date(c.created_at);
         const formattedDate = rDate.toLocaleDateString() + ' ' + rDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1751,4 +1878,271 @@ function renderCitizenComplaintsList(complaints) {
         list.appendChild(card);
     });
 }
+
+
+// ==========================================================================
+// NOTIFICATION SYSTEM FOR CORPORATE/AUTHORITY DASHBOARD
+// ==========================================================================
+let notificationPollingTimer = null;
+let lastUnreadCount = 0;
+let knownNotificationIds = new Set();
+let isFirstNotifFetch = true;
+
+function initNotifications() {
+    const bellBtn = document.getElementById('btn-notification-bell');
+    const dropdown = document.getElementById('notification-dropdown');
+    const markAllBtn = document.getElementById('btn-mark-all-read');
+
+    if (bellBtn && dropdown) {
+        bellBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('hidden');
+            if (!dropdown.classList.contains('hidden')) {
+                fetchNotifications();
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const bellContainer = document.getElementById('notification-bell-container');
+            if (bellContainer && !bellContainer.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+    }
+
+    if (markAllBtn) {
+        markAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            markAllNotificationsRead();
+        });
+    }
+
+    // Initial fetch
+    fetchNotifications();
+
+    // Poll for new notifications every 7 seconds
+    if (notificationPollingTimer) clearInterval(notificationPollingTimer);
+    notificationPollingTimer = setInterval(fetchNotifications, 7000);
+}
+
+function fetchNotifications() {
+    fetch(`${API_BASE}/api/notifications?target_role=authority`)
+    .then(res => res.json())
+    .then(data => {
+        const unreadCount = data.unread_count || 0;
+        const notifications = data.notifications || [];
+
+        // Update badge
+        const badge = document.getElementById('notification-badge');
+        const countPill = document.getElementById('notif-count-pill');
+
+        if (badge) {
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        if (countPill) {
+            countPill.textContent = `${unreadCount} unread`;
+        }
+
+        // Detect new unread notification to show floating Toast alert
+        if (!isFirstNotifFetch && unreadCount > lastUnreadCount) {
+            const newest = notifications.find(n => !n.is_read && !knownNotificationIds.has(n.id));
+            if (newest) {
+                playNotificationSound();
+                showNotificationToast(newest);
+            }
+        }
+
+        isFirstNotifFetch = false;
+        lastUnreadCount = unreadCount;
+        notifications.forEach(n => knownNotificationIds.add(n.id));
+
+        renderNotificationsList(notifications);
+    })
+    .catch(err => console.error("Error fetching notifications:", err));
+}
+
+function renderNotificationsList(notifications) {
+    const list = document.getElementById('notification-list');
+    if (!list) return;
+
+    if (notifications.length === 0) {
+        list.innerHTML = '<p class="empty-notifications-message"><i class="fa-solid fa-bell-slash"></i> No notifications yet</p>';
+        return;
+    }
+
+    list.innerHTML = '';
+    notifications.forEach(n => {
+        const item = document.createElement('div');
+        item.className = `notification-item ${!n.is_read ? 'unread' : ''}`;
+        
+        let iconClass = 'fa-bell';
+        let typeClass = 'notif-icon-new_complaint';
+        if (n.type === 'status_update') {
+            iconClass = 'fa-arrows-rotate';
+            typeClass = 'notif-icon-status_update';
+        } else if (n.type === 'escalation') {
+            iconClass = 'fa-triangle-exclamation';
+            typeClass = 'notif-icon-escalation';
+        } else if (n.type === 'new_complaint') {
+            iconClass = 'fa-pen-to-square';
+            typeClass = 'notif-icon-new_complaint';
+        }
+
+        const formattedTime = formatTimeAgo(n.created_at);
+
+        item.innerHTML = `
+            <div class="notif-icon-box ${typeClass}">
+                <i class="fa-solid ${iconClass}"></i>
+            </div>
+            <div class="notif-content">
+                <div class="notif-item-header">
+                    <span class="notif-item-title">${n.title}</span>
+                    <span class="notif-item-time">${formattedTime}</span>
+                </div>
+                <p class="notif-item-msg">${n.message}</p>
+            </div>
+        `;
+
+        item.addEventListener('click', () => {
+            handleNotificationClick(n);
+        });
+
+        list.appendChild(item);
+    });
+}
+
+function handleNotificationClick(notif) {
+    // Mark as read
+    if (!notif.is_read) {
+        fetch(`${API_BASE}/api/notifications/${notif.id}/read`, { method: 'POST' })
+        .then(() => fetchNotifications())
+        .catch(err => console.error(err));
+    }
+
+    // Hide dropdown
+    const dropdown = document.getElementById('notification-dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+
+    // Switch to authority dashboard tab
+    const authorityBtn = document.getElementById('btn-authority');
+    if (authorityBtn) {
+        authorityBtn.click();
+    }
+
+    // Highlight & scroll to complaint row if ID exists
+    if (notif.complaint_id) {
+        setTimeout(() => {
+            const row = document.getElementById(`complaint-row-${notif.complaint_id}`);
+            if (row) {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                row.style.transition = 'all 0.5s ease';
+                row.style.background = 'rgba(99, 102, 241, 0.3)';
+                row.style.outline = '2px solid var(--accent-indigo)';
+                setTimeout(() => {
+                    row.style.background = '';
+                    row.style.outline = '';
+                }, 3500);
+            }
+        }, 400);
+    }
+}
+
+function markAllNotificationsRead() {
+    fetch(`${API_BASE}/api/notifications/read-all?target_role=authority`, { method: 'POST' })
+    .then(res => res.json())
+    .then(() => {
+        fetchNotifications();
+        if (typeof showToast === 'function') {
+            showToast('Notifications Cleared', 'All notifications marked as read', 'info');
+        }
+    })
+    .catch(err => console.error(err));
+}
+
+function showNotificationToast(notif) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'toast-card';
+
+    let iconClass = 'fa-bell';
+    if (notif.type === 'escalation') iconClass = 'fa-triangle-exclamation';
+    else if (notif.type === 'status_update') iconClass = 'fa-arrows-rotate';
+
+    toast.innerHTML = `
+        <div class="toast-icon"><i class="fa-solid ${iconClass}"></i></div>
+        <div class="toast-body">
+            <div class="toast-title">${notif.title}</div>
+            <p class="toast-message">${notif.message}</p>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+    `;
+
+    toast.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('toast-close')) {
+            handleNotificationClick(notif);
+            toast.remove();
+        }
+    });
+
+    container.appendChild(toast);
+
+    // Auto dismiss after 6 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.classList.add('toast-fadeOut');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 6000);
+}
+
+function playNotificationSound() {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1);
+        
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+    } catch (e) {
+        // Audio error silent fallback
+    }
+}
+
+function formatTimeAgo(isoString) {
+    if (!isoString) return 'Just now';
+    const date = new Date(isoString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+
+    if (seconds < 30) return 'Just now';
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+}
+
 

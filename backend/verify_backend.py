@@ -2,6 +2,7 @@ import os
 import unittest
 from datetime import datetime, timedelta
 from PIL import Image
+from werkzeug.security import generate_password_hash
 from app import create_app
 from models import db, Complaint, User, StatusLog
 from ai_processor import get_image_similarity, classify_complaint_text, haversine_distance
@@ -31,7 +32,7 @@ class TestSmartCivicAI(unittest.TestCase):
                 contact="+15550100001", 
                 ward="ward_1",
                 gmail="suresh@gmail.com",
-                password="password"
+                password=generate_password_hash("password")
             )
             test_worker = User(
                 id=4, 
@@ -40,7 +41,7 @@ class TestSmartCivicAI(unittest.TestCase):
                 contact="+15550100002", 
                 ward="ward_1",
                 gmail="ramesh@gmail.com",
-                password="password"
+                password=generate_password_hash("password")
             )
             db.session.add(test_supervisor)
             db.session.add(test_worker)
@@ -270,5 +271,53 @@ class TestSmartCivicAI(unittest.TestCase):
             reports_list = get_response.get_json()
             self.assertTrue(any(r['id'] == report_id for r in reports_list))
 
+    def test_notifications_system(self):
+        # 1. Post a complaint and check if notification is generated
+        res = self.client.post('/api/complaints', data={
+            'description': 'Huge Pothole causing traffic backlog on Main St',
+            'latitude': '12.971598',
+            'longitude': '77.594562',
+            'contact': '+15550199'
+        })
+        self.assertEqual(res.status_code, 201)
+        data = res.get_json()
+        comp_id = data['complaint_id']
+
+        # 2. Get notifications
+        notif_res = self.client.get('/api/notifications?target_role=authority')
+        self.assertEqual(notif_res.status_code, 200)
+        notif_data = notif_res.get_json()
+        self.assertGreaterEqual(notif_data['unread_count'], 1)
+        notifications = notif_data['notifications']
+        self.assertTrue(any(n['complaint_id'] == comp_id for n in notifications))
+
+        target_notif = next(n for n in notifications if n['complaint_id'] == comp_id)
+        notif_id = target_notif['id']
+
+        # 3. Mark single notification as read
+        read_res = self.client.post(f'/api/notifications/{notif_id}/read')
+        self.assertEqual(read_res.status_code, 200)
+
+        # 4. Update complaint and check if update notification is generated
+        update_res = self.client.put(f'/api/complaints/{comp_id}', json={
+            'status': 'Assigned',
+            'assigned_to': 4,
+            'notes': 'Dispatched worker Ramesh'
+        })
+        self.assertEqual(update_res.status_code, 200)
+
+        # Verify new notification generated for status update
+        notif_res2 = self.client.get('/api/notifications?target_role=authority')
+        notif_data2 = notif_res2.get_json()
+        self.assertTrue(any(n['type'] == 'status_update' and n['complaint_id'] == comp_id for n in notif_data2['notifications']))
+
+        # 5. Mark all as read
+        read_all_res = self.client.post('/api/notifications/read-all?target_role=authority')
+        self.assertEqual(read_all_res.status_code, 200)
+
+        notif_res3 = self.client.get('/api/notifications?target_role=authority')
+        self.assertEqual(notif_res3.get_json()['unread_count'], 0)
+
 if __name__ == '__main__':
     unittest.main()
+

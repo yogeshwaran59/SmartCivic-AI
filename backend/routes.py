@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime
 from flask import Blueprint, request, jsonify, Response, current_app
 from werkzeug.utils import secure_filename
-from models import db, User, Complaint, StatusLog
+from werkzeug.security import generate_password_hash, check_password_hash
+from models import db, User, Complaint, StatusLog, Notification
 from ai_processor import classify_complaint_text, haversine_distance, get_image_similarity, analyze_and_describe_image
 
 routes_bp = Blueprint('routes', __name__)
@@ -129,6 +130,22 @@ def create_complaint():
             timestamp=datetime.utcnow()
         )
         db.session.add(log)
+
+        # Create notification for corporate/authority dashboard
+        notif_title = f"New Complaint ({category})"
+        notif_msg = f"Complaint {complaint_id} ({category}) reported in {ward} with {priority} priority."
+        if duplicate_flag:
+            notif_msg += f" (Flagged as potential duplicate of {duplicate_of})"
+        new_notif = Notification(
+            title=notif_title,
+            message=notif_msg,
+            type='new_complaint',
+            complaint_id=complaint_id,
+            target_role='authority',
+            created_at=datetime.utcnow()
+        )
+        db.session.add(new_notif)
+
         db.session.commit()
 
         # Print mock SMS log
@@ -368,6 +385,25 @@ def update_complaint(id):
             timestamp=datetime.utcnow()
         )
         db.session.add(log)
+
+        # Create notification for corporate/authority dashboard
+        notif_title = f"Complaint Update ({id})"
+        notif_msg = f"Complaint {id} status changed from '{old_status}' to '{status}'."
+        if complaint.assigned_to:
+            worker_name = complaint.assigned_worker.name if complaint.assigned_worker else f"Worker #{complaint.assigned_to}"
+            notif_msg += f" Assigned to: {worker_name}."
+        if notes:
+            notif_msg += f" Note: {notes}"
+        new_notif = Notification(
+            title=notif_title,
+            message=notif_msg,
+            type='status_update',
+            complaint_id=id,
+            target_role='authority',
+            created_at=datetime.utcnow()
+        )
+        db.session.add(new_notif)
+
         db.session.commit()
 
         # Print mock SMS logs
@@ -455,6 +491,71 @@ def get_analytics():
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@routes_bp.route('/api/notifications', methods=['GET'])
+def get_notifications():
+    """
+    Get notifications list. Filter by target_role (default: authority).
+    """
+    try:
+        target_role = request.args.get('target_role', 'authority')
+        unread_only = request.args.get('unread_only', 'false').lower() == 'true'
+
+        query = Notification.query
+        if target_role != 'all':
+            query = query.filter(Notification.target_role.in_([target_role, 'all']))
+        if unread_only:
+            query = query.filter_by(is_read=False)
+
+        notifications = query.order_by(Notification.created_at.desc()).limit(50).all()
+        unread_count = Notification.query.filter(
+            Notification.target_role.in_([target_role, 'all']),
+            Notification.is_read == False
+        ).count()
+
+        return jsonify({
+            'unread_count': unread_count,
+            'notifications': [n.to_dict() for n in notifications]
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@routes_bp.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
+def mark_notification_read(notification_id):
+    """
+    Mark a single notification as read.
+    """
+    try:
+        notif = Notification.query.get(notification_id)
+        if not notif:
+            return jsonify({'error': 'Notification not found'}), 404
+        notif.is_read = True
+        db.session.commit()
+        return jsonify({'message': 'Notification marked as read', 'notification': notif.to_dict()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@routes_bp.route('/api/notifications/read-all', methods=['POST'])
+def mark_all_notifications_read():
+    """
+    Mark all notifications for a role as read.
+    """
+    try:
+        target_role = request.args.get('target_role', 'authority')
+        query = Notification.query.filter_by(is_read=False)
+        if target_role != 'all':
+            query = query.filter(Notification.target_role.in_([target_role, 'all']))
+        query.update({Notification.is_read: True}, synchronize_session=False)
+        db.session.commit()
+        return jsonify({'message': 'All notifications marked as read'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 
 
 # REAL EXOTEL IVR WEBHOOKS
@@ -657,15 +758,23 @@ def signup():
         if not name or not gmail or not password or not role or not contact:
             return jsonify({'error': 'Name, Gmail, Password, Role, and Contact are required.'}), 400
 
+        # Enforce passcode for privileged roles (authority, worker, journalist)
+        if role in ['authority', 'worker', 'journalist']:
+            admin_key = data.get('admin_key')
+            expected_key = os.getenv('ADMIN_SECRET_KEY', 'ADMIN123')
+            if not admin_key or admin_key.strip() != expected_key:
+                return jsonify({'error': 'Invalid Admin Authorization Passcode. Corporate/Authority account creation is restricted to authorized personnel.'}), 403
+
         # Check existing user
         existing_user = User.query.filter_by(gmail=gmail).first()
         if existing_user:
             return jsonify({'error': 'A user with this Gmail address already exists.'}), 409
 
+        hashed_password = generate_password_hash(password)
         new_user = User(
             name=name,
             gmail=gmail,
-            password=password,
+            password=hashed_password,
             role=role,
             contact=contact,
             ward=ward
@@ -697,7 +806,7 @@ def login():
             return jsonify({'error': 'Gmail and Password are required.'}), 400
 
         user = User.query.filter_by(gmail=gmail).first()
-        if not user or user.password != password:
+        if not user or not user.check_password(password):
             return jsonify({'error': 'Invalid Gmail address or password.'}), 401
 
         print(f"============================================================")
