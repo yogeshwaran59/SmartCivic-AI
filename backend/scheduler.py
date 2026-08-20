@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from models import db, Complaint, StatusLog, User
+from models import db, Complaint, StatusLog, User, Notification
 
 def run_escalation_checks(app):
     with app.app_context():
@@ -36,6 +36,18 @@ def run_escalation_checks(app):
                 status="Escalated"
             )
             db.session.add(log)
+
+            # Add notification
+            notif = Notification(
+                title=f"ESCALATION ALERT: {complaint.complaint_id}",
+                message=f"Complaint {complaint.complaint_id} in {complaint.ward} exceeded 48h and has been escalated.",
+                type="escalation",
+                complaint_id=complaint.complaint_id,
+                target_role="authority",
+                created_at=datetime.utcnow()
+            )
+            db.session.add(notif)
+
             
             # Print mock Twilio SMS / Media / Journalist notifications
             print("============================================================")
