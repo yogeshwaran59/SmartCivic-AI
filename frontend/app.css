@@ -1548,6 +1548,31 @@ body:not(.light-theme) .role-card.active {
     background: rgba(2, 132, 199, 0.15);
     border-color: #0284c7;
     color: #38bdf8;
+    box-shadow: 0 0 15px rgba(2, 132, 199, 0.2);
+}
+
+.role-card[data-login-role="authority"].active,
+.role-card[data-role="authority"].active {
+    background: rgba(99, 102, 241, 0.18) !important;
+    border-color: #818cf8 !important;
+    color: #c7d2fe !important;
+    box-shadow: 0 0 15px rgba(99, 102, 241, 0.3) !important;
+}
+
+.role-card[data-login-role="worker"].active,
+.role-card[data-role="worker"].active {
+    background: rgba(245, 158, 11, 0.18) !important;
+    border-color: #fbbf24 !important;
+    color: #fde68a !important;
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.3) !important;
+}
+
+.role-card[data-login-role="journalist"].active,
+.role-card[data-role="journalist"].active {
+    background: rgba(16, 185, 129, 0.18) !important;
+    border-color: #34d399 !important;
+    color: #a7f3d0 !important;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.3) !important;
 }
 
 .auth-error-banner {
@@ -1919,7 +1944,94 @@ body:not(.light-theme) #btn-close-auth-modal:hover {
     color: #475569;
 }
 
+/* UNAUTHENTICATED PLAIN LANDING PAGE STYLES */
+body.landing-page {
+    background-color: #0b1120 !important;
+    background-image: 
+        radial-gradient(circle at 50% 30%, rgba(99, 102, 241, 0.12) 0%, transparent 60%),
+        radial-gradient(circle at 80% 80%, rgba(20, 184, 166, 0.08) 0%, transparent 50%) !important;
+}
 
+body.landing-page .main-content {
+    display: none !important;
+}
 
+body.landing-page .nav-links {
+    display: none !important;
+}
 
+body.landing-page .glass-header {
+    justify-content: center;
+    border-bottom: none;
+    background: transparent;
+    box-shadow: none;
+    padding: 30px 0 10px;
+}
 
+body.landing-page #auth-modal {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #0b0f19;
+    backdrop-filter: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    padding: 20px;
+}
+
+body.landing-page .auth-card {
+    max-width: 440px;
+    width: 100%;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #131b2e;
+    backdrop-filter: none;
+    border-radius: 16px;
+    margin: 0 auto;
+}
+
+/* SMARTCIVIC AI AUTH BRAND HEADER */
+.auth-brand-header {
+    text-align: center;
+    padding-top: 6px;
+    margin-bottom: 18px;
+}
+
+.auth-brand-icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 12px;
+    background: linear-gradient(135deg, #6366f1, #14b8a6);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    color: #ffffff;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+}
+
+.auth-brand-title {
+    font-family: var(--font-heading);
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin: 0 0 4px 0;
+    letter-spacing: -0.5px;
+}
+
+.auth-brand-title span {
+    background: linear-gradient(135deg, #818cf8, #2dd4bf);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.auth-brand-tagline {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin: 0;
+    font-weight: 500;
+}

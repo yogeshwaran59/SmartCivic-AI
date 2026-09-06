@@ -1,0 +1,17 @@
+{
+  "include": [
+    "backend"
+  ],
+  "exclude": [
+    "**/__pyrefly_virtual__/**",
+    "**/.venv/**",
+    ".venv",
+    "**/__pycache__/**",
+    "**/node_modules/**"
+  ],
+  "extraPaths": [
+    "backend"
+  ],
+  "venvPath": ".",
+  "venv": ".venv"
+}

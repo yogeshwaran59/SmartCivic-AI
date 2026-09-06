@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from models import db, Complaint, StatusLog, User
 
 def run_escalation_checks(app):
     with app.app_context():
         # 1. 48h Authority Escalations
-        time_threshold = datetime.utcnow() - timedelta(hours=48)
+        time_threshold = datetime.now(timezone.utc) - timedelta(hours=48)
         escalated_complaints = Complaint.query.filter(
             Complaint.status.in_(['Submitted', 'Assigned']),
             Complaint.created_at <= time_threshold,
@@ -48,7 +48,7 @@ def run_escalation_checks(app):
             print("============================================================")
             
         # 2. 5-Minute Journalist Redirection Sweep
-        j_time_threshold = datetime.utcnow() - timedelta(minutes=5)
+        j_time_threshold = datetime.now(timezone.utc) - timedelta(minutes=5)
         redirect_complaints = Complaint.query.filter(
             Complaint.status == 'Submitted',
             Complaint.opened_at == None,
@@ -70,3 +70,4 @@ def init_scheduler(app):
     scheduler.start()
     print("[Scheduler] Background scheduler initialized and running (checking every 60 seconds).")
     return scheduler
+

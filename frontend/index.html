@@ -27,6 +27,10 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
+    <!-- EXIF Reader & Tesseract OCR (Photo GPS & Watermark Parser) -->
+    <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    
     <!-- Custom Style Sheet -->
     <link rel="stylesheet" href="app.css">
 </head>
@@ -59,9 +63,6 @@
                     <button class="btn-logout" id="btn-logout-session"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
                 </div>
                 <button class="btn-login-header" id="btn-login-trigger"><i class="fa-solid fa-right-to-bracket"></i> Login / Register</button>
-                <div class="theme-toggle" id="theme-toggle-btn">
-                    <i class="fa-solid fa-moon"></i>
-                </div>
             </div>
         </header>
 
@@ -103,19 +104,30 @@
                                 <input type="tel" id="form-contact" placeholder="e.g. +1 555-0199" required>
                             </div>
                             
+                            <div class="form-group">
+                                <label for="form-gmail"><i class="fa-solid fa-envelope"></i> Your Gmail / Email Address (For Live Notifications & Tracking Link)</label>
+                                <input type="email" id="form-gmail" placeholder="e.g. citizen@gmail.com" required>
+                            </div>
+                            
                             <!-- Location Section -->
                             <div class="form-group">
                                 <div class="label-row">
                                     <label>Issue Geolocation</label>
                                     <button type="button" class="btn-small" id="btn-gps-detect"><i class="fa-solid fa-location-crosshairs"></i> Get Current GPS</button>
                                 </div>
-                                <div class="gps-coords">
-                                    <span>Lat: <strong id="val-latitude">12.971598</strong></span>
-                                    <span>Lng: <strong id="val-longitude">77.594562</strong></span>
+
+                                <div class="gps-coords" style="flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 6px;">
+                                    <div style="display: flex; gap: 16px;">
+                                        <span>Lat: <strong id="val-latitude">12.971598</strong></span>
+                                        <span>Lng: <strong id="val-longitude">77.594562</strong></span>
+                                    </div>
+                                    <div style="font-size: 0.78rem; color: var(--accent-teal); margin-top: 2px;">
+                                        <i class="fa-solid fa-map-pin"></i> <span id="lbl-address-string">Detecting exact location address...</span>
+                                    </div>
                                 </div>
                                 <div class="map-picker-container">
                                     <div id="map-picker"></div>
-                                    <span class="map-helper-text"><i class="fa-solid fa-circle-info"></i> Click on the map to pin the exact issue location.</span>
+                                    <span class="map-helper-text"><i class="fa-solid fa-circle-info"></i> Click on "Get Current GPS" to auto-detect location, or tap/drag the map pin to select location.</span>
                                 </div>
                             </div>
                             
@@ -624,10 +636,23 @@
             <div class="auth-card">
                 <button class="btn-close-modal" id="btn-close-auth-modal">&times;</button>
 
-                <!-- Signup Panel -->
+                <!-- SmartCivic AI Brand Header Title -->
+                
+                <div class="auth-brand-header">
+                    <div class="auth-brand-icon"><i class="fa-solid fa-city"></i></div>
+                    <h1 class="auth-brand-title">SmartCivic <span>AI</span></h1>
+                    <p class="auth-brand-tagline">Intelligent City Issue Reporting & Dispatch</p>
+                </div>
+
                 <div id="signup-panel" class="auth-panel hidden">
                     <h2 class="auth-title">Create Account</h2>
                     <p class="auth-subtitle">Join the SmartCivic platform</p>
+                    
+                    <div id="signup-authority-notice" class="hidden" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); padding: 12px 14px; border-radius: 8px; font-size: 12px; color: #c7d2fe; margin-bottom: 16px; line-height: 1.4;">
+                        <i class="fa-solid fa-shield-halved" style="color: #818cf8; margin-right: 6px;"></i>
+                        <strong>Authority Notice:</strong> Authority registrations require Municipal Admin approval. Your permanent <strong>Secret Authorization Key</strong> will be emailed to your Gmail once approved.
+                    </div>
+
                     <form id="signup-form">
                         <div class="form-group">
                             <label class="uppercase-label">Full Name</label>
@@ -657,15 +682,14 @@
                                     <span>JOURNALIST</span>
                                 </button>
                             </div>
-                            <!-- Hidden input to store chosen role -->
                             <input type="hidden" id="signup-role" value="citizen">
                         </div>
 
                         <div class="form-group">
-                            <label class="uppercase-label">Email Address</label>
+                            <label class="uppercase-label">Gmail Address</label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-envelope"></i>
-                                <input type="email" id="signup-gmail" placeholder="name@example.com" required>
+                                <input type="email" id="signup-gmail" placeholder="your.name@gmail.com" required>
                             </div>
                         </div>
 
@@ -685,7 +709,7 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="btn-submit-blue">Create Account</button>
+                        <button type="submit" class="btn-submit-blue" id="btn-submit-signup">Create Account</button>
                         
                         <div class="auth-switch-text">
                             Already have an account? <span id="link-go-to-login" class="switch-link">Sign in</span>
@@ -693,16 +717,44 @@
                     </form>
                 </div>
 
-                <!-- Login Panel -->
                 <div id="login-panel" class="auth-panel">
                     <h2 class="auth-title">Welcome Back</h2>
-                    <p class="auth-subtitle">Sign in to your SmartCivic account</p>
+                    <p class="auth-subtitle">Select your portal role to sign in</p>
+                    
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label class="uppercase-label">Choose Role</label>
+                        <div class="role-selector-row login-role-selector">
+                            <button type="button" class="role-card active" data-login-role="citizen">
+                                <i class="fa-solid fa-user"></i>
+                                <span>CITIZEN</span>
+                            </button>
+                            <button type="button" class="role-card" data-login-role="authority">
+                                <i class="fa-solid fa-shield-halved"></i>
+                                <span>AUTHORITY</span>
+                            </button>
+                            <button type="button" class="role-card" data-login-role="worker">
+                                <i class="fa-solid fa-helmet-safety"></i>
+                                <span>WORKER</span>
+                            </button>
+                            <button type="button" class="role-card" data-login-role="journalist">
+                                <i class="fa-solid fa-newspaper"></i>
+                                <span>JOURNALIST</span>
+                            </button>
+                        </div>
+                        <input type="hidden" id="login-role" value="citizen">
+                    </div>
+
+                    <div id="login-authority-alert" class="hidden" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); padding: 10px 14px; border-radius: 8px; font-size: 12px; color: #c7d2fe; margin-bottom: 16px; line-height: 1.4;">
+                        <i class="fa-solid fa-key" style="color: #818cf8; margin-right: 6px;"></i>
+                        <strong>Authority Sign In:</strong> Requires your <strong>Secret Access Key</strong> sent to your Gmail upon Admin approval.
+                    </div>
+
                     <form id="login-form">
                         <div class="form-group">
-                            <label class="uppercase-label">Email Address</label>
+                            <label class="uppercase-label">Gmail Address</label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-envelope"></i>
-                                <input type="email" id="login-gmail" placeholder="name@example.com" required>
+                                <input type="email" id="login-gmail" placeholder="your.name@gmail.com" required>
                             </div>
                         </div>
 
@@ -714,10 +766,30 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="btn-submit-blue">Sign In</button>
+                        <div class="form-group hidden" id="login-secret-key-group">
+                            <label class="uppercase-label" style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Secret Access Key</span>
+                                <span style="font-size: 10px; color: var(--color-cyan); font-weight: 700; background: rgba(6, 182, 212, 0.15); padding: 2px 6px; border-radius: 4px;">REQUIRED FOR AUTHORITY</span>
+                            </label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-key"></i>
+                                <input type="text" id="login-secret-key" placeholder="AUTH-XXXX-XXXX" autocomplete="off" style="font-family: 'JetBrains Mono', monospace; font-weight: 700; letter-spacing: 1px;">
+                            </div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                                Enter the secret authorization key received on your registered Gmail.
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-submit-blue" id="btn-submit-login">Sign In</button>
                         
                         <div class="auth-switch-text">
                             Don't have an account? <span id="link-go-to-signup" class="switch-link">Sign up</span>
+                        </div>
+                        
+                        <div style="text-align: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+                            <a href="/admin" target="_blank" style="color: #a5b4fc; font-size: 12px; text-decoration: none; font-weight: 600;">
+                                <i class="fa-solid fa-user-shield"></i> Go to Municipal Admin Portal &rarr;
+                            </a>
                         </div>
                     </form>
                 </div>
@@ -731,7 +803,6 @@
 
     </div>
 
-    <!-- Application Script -->
     <script src="app.js"></script>
 </body>
 </html>

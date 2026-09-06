@@ -1,29 +1,44 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # 'citizen' | 'worker' | 'authority'
+    role = db.Column(db.String(20), nullable=False)  # 'citizen' | 'worker' | 'authority' | 'admin' | 'journalist'
     contact = db.Column(db.String(20), nullable=False)
     ward = db.Column(db.String(50), nullable=False)  # 'ward_1' | 'ward_2' | 'ward_3'
     gmail = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(100), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    approval_status = db.Column(db.String(30), default='approved')  # 'approved' | 'pending_approval' | 'rejected' | 'suspended'
+    secret_key = db.Column(db.String(100), nullable=True)  # Generated secret access key e.g. "AUTH-9B7C-4X8A"
+    approved_at = db.Column(db.DateTime, nullable=True)
 
-    def to_dict(self):
-        return {
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def to_dict(self, include_secret=False):
+        data = {
             'id': self.id,
             'name': self.name,
             'role': self.role,
             'contact': self.contact,
             'ward': self.ward,
             'gmail': self.gmail,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'approval_status': self.approval_status or 'approved',
+            'approved_at': self.approved_at.isoformat() if self.approved_at else None,
+            'has_secret_key': bool(self.secret_key)
         }
+        if include_secret:
+            data['secret_key'] = self.secret_key
+        return data
 
 class Complaint(db.Model):
     __tablename__ = 'complaints'
@@ -35,15 +50,19 @@ class Complaint(db.Model):
     category = db.Column(db.String(50), nullable=False)  # 'pothole' | 'garbage' | 'drainage' | 'street_light' | 'other'
     priority = db.Column(db.String(20), nullable=False)  # 'High' | 'Medium' | 'Low'
     status = db.Column(db.String(50), nullable=False, default='Submitted')  # 'Submitted' | 'Assigned' | 'In Progress' | 'Resolved' | 'Closed'
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
     opened_at = db.Column(db.DateTime, nullable=True)
     escalation_flag = db.Column(db.Boolean, default=False)
     assigned_to = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     ward = db.Column(db.String(50), nullable=False)
     image_analysis = db.Column(db.Text, nullable=True)
     redirected_to_journalist = db.Column(db.Boolean, default=False, nullable=False)
+    citizen_gmail = db.Column(db.String(100), nullable=True)
 
     assigned_worker = db.relationship('User', backref='assigned_complaints')
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {
@@ -62,7 +81,8 @@ class Complaint(db.Model):
             'assigned_to_name': self.assigned_worker.name if self.assigned_worker else None,
             'ward': self.ward,
             'image_analysis': self.image_analysis,
-            'redirected_to_journalist': self.redirected_to_journalist
+            'redirected_to_journalist': self.redirected_to_journalist,
+            'citizen_gmail': self.citizen_gmail
         }
 
 class StatusLog(db.Model):
@@ -71,7 +91,10 @@ class StatusLog(db.Model):
     complaint_id = db.Column(db.String(50), db.ForeignKey('complaints.complaint_id'), nullable=False)
     status = db.Column(db.String(50), nullable=False)
     notes = db.Column(db.Text, nullable=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=utc_now)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {
@@ -89,9 +112,12 @@ class JournalistReport(db.Model):
     title = db.Column(db.String(200), nullable=False)
     content = db.Column(db.Text, nullable=False)
     published = db.Column(db.Boolean, default=False, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     complaint = db.relationship('Complaint', backref='reports')
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {
@@ -102,3 +128,4 @@ class JournalistReport(db.Model):
             'published': self.published,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+

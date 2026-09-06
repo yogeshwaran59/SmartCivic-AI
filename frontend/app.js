@@ -1,6 +1,8 @@
 // SmartCivic AI - Frontend JS Application
 
-const API_BASE = window.location.origin;
+const API_BASE = (window.location.origin && (window.location.origin.includes(':5000') || window.location.origin.includes(':5500')))
+    ? (window.location.origin.includes(':5500') ? 'http://127.0.0.1:5000' : window.location.origin)
+    : 'http://127.0.0.1:5000';
 
 // State management
 let activeTab = 'citizen-portal';
@@ -33,16 +35,24 @@ let currentlyTrackedId = null;
 
 let userCurrentLat = 12.971598;
 let userCurrentLng = 77.594562;
+let locationAcquiredFromGps = false;
 
 if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             userCurrentLat = pos.coords.latitude;
             userCurrentLng = pos.coords.longitude;
+            locationAcquiredFromGps = true;
+            if (pickerMarker && pickerMap) {
+                pickerMarker.setLatLng([userCurrentLat, userCurrentLng]);
+                pickerMap.setView([userCurrentLat, userCurrentLng], 15);
+                updateCoordsInForm(userCurrentLat, userCurrentLng);
+            }
         },
         (err) => {
             console.warn("Geolocation query error: using default coords", err);
-        }
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 }
 
@@ -72,20 +82,40 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }, 5000);
+
+    // Deep-linking support for Gmail tracking links (?track=COMP-XXXXXX)
+    const urlParams = new URLSearchParams(window.location.search);
+    const trackParam = urlParams.get('track');
+    if (trackParam) {
+        switchTab('citizen-portal');
+        const searchInput = document.getElementById('search-complaint-id');
+        if (searchInput) searchInput.value = trackParam;
+        trackComplaint(trackParam);
+        setTimeout(() => {
+            const trackerSection = document.getElementById('tracker-result') || document.getElementById('search-complaint-id');
+            if (trackerSection) {
+                trackerSection.scrollIntoView({ behavior: 'smooth' });
+            }
+        }, 500);
+    }
 });
 
 // Theme Management
 function initTheme() {
     const themeBtn = document.getElementById('theme-toggle-btn');
-    themeBtn.addEventListener('click', () => {
-        document.body.classList.toggle('light-theme');
-        const icon = themeBtn.querySelector('i');
-        if (document.body.classList.contains('light-theme')) {
-            icon.className = 'fa-solid fa-sun';
-        } else {
-            icon.className = 'fa-solid fa-moon';
-        }
-    });
+    if (themeBtn) {
+        themeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('light-theme');
+            const icon = themeBtn.querySelector('i');
+            if (icon) {
+                if (document.body.classList.contains('light-theme')) {
+                    icon.className = 'fa-solid fa-sun';
+                } else {
+                    icon.className = 'fa-solid fa-moon';
+                }
+            }
+        });
+    }
 }
 
 // Authentication & Session Handling
@@ -97,107 +127,199 @@ function initAuth() {
     const errorText = document.getElementById('auth-error-text');
 
     // Switch panels via links
-    document.getElementById('link-go-to-login').addEventListener('click', () => {
-        loginPanel.classList.remove('hidden');
-        signupPanel.classList.add('hidden');
-        errorMsg.classList.add('hidden');
-    });
+    const linkLogin = document.getElementById('link-go-to-login');
+    if (linkLogin) {
+        linkLogin.addEventListener('click', () => {
+            if (loginPanel) loginPanel.classList.remove('hidden');
+            if (signupPanel) signupPanel.classList.add('hidden');
+            if (errorMsg) errorMsg.classList.add('hidden');
+        });
+    }
 
-    document.getElementById('link-go-to-signup').addEventListener('click', () => {
-        signupPanel.classList.remove('hidden');
-        loginPanel.classList.add('hidden');
-        errorMsg.classList.add('hidden');
-    });
+    const linkSignup = document.getElementById('link-go-to-signup');
+    if (linkSignup) {
+        linkSignup.addEventListener('click', () => {
+            if (signupPanel) signupPanel.classList.remove('hidden');
+            if (loginPanel) loginPanel.classList.add('hidden');
+            if (errorMsg) errorMsg.classList.add('hidden');
+        });
+    }
 
     // Close Auth Modal
-    document.getElementById('btn-close-auth-modal').addEventListener('click', () => {
-        authModal.classList.add('hidden');
-    });
+    const closeAuthBtn = document.getElementById('btn-close-auth-modal');
+    if (closeAuthBtn) {
+        closeAuthBtn.addEventListener('click', () => {
+            if (authModal) authModal.classList.add('hidden');
+        });
+    }
 
     // Open Auth Modal via Header Trigger
-    document.getElementById('btn-login-trigger').addEventListener('click', () => {
-        authModal.classList.remove('hidden');
+    const loginTriggerBtn = document.getElementById('btn-login-trigger');
+    if (loginTriggerBtn) {
+        loginTriggerBtn.addEventListener('click', () => {
+            if (authModal) authModal.classList.remove('hidden');
+        });
+    }
+
+    // Signup Role selection cards click logic
+    const signupRoleCards = document.querySelectorAll('#signup-panel .role-card');
+    const signupRoleInput = document.getElementById('signup-role');
+    const authNotice = document.getElementById('signup-authority-notice');
+    signupRoleCards.forEach(card => {
+        card.addEventListener('click', () => {
+            signupRoleCards.forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            const chosenRole = card.getAttribute('data-role');
+            if (signupRoleInput) signupRoleInput.value = chosenRole;
+            if (authNotice) {
+                if (chosenRole === 'authority') {
+                    authNotice.classList.remove('hidden');
+                } else {
+                    authNotice.classList.add('hidden');
+                }
+            }
+        });
     });
 
-    // Role selection cards click logic
-    const roleCards = document.querySelectorAll('.role-card');
-    const roleInput = document.getElementById('signup-role');
-    roleCards.forEach(card => {
+    // Login Role selection cards click logic
+    const loginRoleCards = document.querySelectorAll('.login-role-selector .role-card');
+    const loginRoleInput = document.getElementById('login-role');
+    const secretKeyGroup = document.getElementById('login-secret-key-group');
+    const secretKeyInput = document.getElementById('login-secret-key');
+    const authorityAlert = document.getElementById('login-authority-alert');
+
+    loginRoleCards.forEach(card => {
         card.addEventListener('click', () => {
-            roleCards.forEach(c => c.classList.remove('active'));
+            loginRoleCards.forEach(c => c.classList.remove('active'));
             card.classList.add('active');
-            roleInput.value = card.getAttribute('data-role');
+            const role = card.getAttribute('data-login-role');
+            if (loginRoleInput) loginRoleInput.value = role;
+
+            if (role === 'authority') {
+                if (secretKeyGroup) secretKeyGroup.classList.remove('hidden');
+                if (authorityAlert) authorityAlert.classList.remove('hidden');
+                if (secretKeyInput) {
+                    secretKeyInput.required = true;
+                    secretKeyInput.focus();
+                }
+            } else {
+                if (secretKeyGroup) secretKeyGroup.classList.add('hidden');
+                if (authorityAlert) authorityAlert.classList.add('hidden');
+                if (secretKeyInput) {
+                    secretKeyInput.required = false;
+                    secretKeyInput.value = '';
+                }
+            }
         });
     });
 
     // Login Form Submit
-    document.getElementById('login-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        errorMsg.classList.add('hidden');
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (errorMsg) errorMsg.classList.add('hidden');
 
-        const gmail = document.getElementById('login-gmail').value.trim();
-        const password = document.getElementById('login-password').value;
+            const gmailEl = document.getElementById('login-gmail');
+            const passEl = document.getElementById('login-password');
+            const keyEl = document.getElementById('login-secret-key');
+            if (!gmailEl || !passEl) return;
 
-        fetch(`${API_BASE}/api/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gmail, password })
-        })
-        .then(res => {
-            if (!res.ok) {
-                if (res.status === 401) throw new Error('Invalid Gmail address or password.');
-                throw new Error('Server connection error.');
+            const gmail = gmailEl.value.trim();
+            const password = passEl.value;
+            const secret_key = keyEl ? keyEl.value.trim() : '';
+            const selectedRole = loginRoleInput ? loginRoleInput.value : 'citizen';
+
+            if (selectedRole === 'authority' && !secret_key) {
+                if (errorText) errorText.textContent = 'Secret Authorization Key is required for Authority login. Please check your Gmail.';
+                if (errorMsg) errorMsg.classList.remove('hidden');
+                return;
             }
-            return res.json();
-        })
-        .then(user => {
-            saveSession(user);
-            showToast('Welcome Back', `Logged in successfully as ${user.name}`, 'success');
-        })
-        .catch(err => {
-            errorText.textContent = err.message;
-            errorMsg.classList.remove('hidden');
+
+            fetch(`${API_BASE}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gmail, password, secret_key })
+            })
+            .then(async res => {
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || 'Invalid credentials or authorization key.');
+                }
+                return data;
+            })
+            .then(user => {
+                saveSession(user);
+                showToast('Welcome Back', `Logged in successfully as ${user.name} (${user.role})`, 'success');
+            })
+            .catch(err => {
+                if (errorText) errorText.textContent = err.message;
+                if (errorMsg) errorMsg.classList.remove('hidden');
+            });
         });
-    });
+    }
 
     // Signup Form Submit
-    document.getElementById('signup-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        errorMsg.classList.add('hidden');
+    const signupForm = document.getElementById('signup-form');
+    if (signupForm) {
+        signupForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (errorMsg) errorMsg.classList.add('hidden');
 
-        const name = document.getElementById('signup-name').value.trim();
-        const gmail = document.getElementById('signup-gmail').value.trim();
-        const password = document.getElementById('signup-password').value;
-        const role = document.getElementById('signup-role').value;
-        const contact = document.getElementById('signup-contact').value.trim();
+            const nameEl = document.getElementById('signup-name');
+            const gmailEl = document.getElementById('signup-gmail');
+            const passEl = document.getElementById('signup-password');
+            const roleEl = document.getElementById('signup-role');
+            const contactEl = document.getElementById('signup-contact');
 
-        fetch(`${API_BASE}/api/auth/signup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, gmail, password, role, contact })
-        })
-        .then(res => {
-            if (!res.ok) {
-                if (res.status === 409) throw new Error('A user with this Gmail already exists.');
-                throw new Error('Failed to register account.');
-            }
-            return res.json();
-        })
-        .then(user => {
-            saveSession(user);
-            showToast('Account Created', `Successfully signed up as ${user.name}`, 'success');
-        })
-        .catch(err => {
-            errorText.textContent = err.message;
-            errorMsg.classList.remove('hidden');
+            const name = nameEl ? nameEl.value.trim() : '';
+            const gmail = gmailEl ? gmailEl.value.trim() : '';
+            const password = passEl ? passEl.value : '';
+            const role = roleEl ? roleEl.value : 'citizen';
+            const contact = contactEl ? contactEl.value.trim() : '';
+
+            fetch(`${API_BASE}/api/auth/signup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, gmail, password, role, contact })
+            })
+            .then(async res => {
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to register account.');
+                }
+                return data;
+            })
+            .then(user => {
+                if (user.role === 'authority' && user.approval_status === 'pending_approval') {
+                    showToast('Application Submitted', 'Authority registration is awaiting Municipal Admin approval. Your Secret Key will be emailed to your Gmail upon approval.', 'info');
+                    // Switch to login tab
+                    const signupP = document.getElementById('signup-panel');
+                    const loginP = document.getElementById('login-panel');
+                    if (signupP && loginP) {
+                        signupP.classList.add('hidden');
+                        loginP.classList.remove('hidden');
+                    }
+                } else {
+                    saveSession(user);
+                    showToast('Account Created', `Successfully signed up as ${user.name}`, 'success');
+                }
+            })
+            .catch(err => {
+                if (errorText) errorText.textContent = err.message;
+                if (errorMsg) errorMsg.classList.remove('hidden');
+            });
         });
-    });
+    }
 
     // Logout Click
-    document.getElementById('btn-logout-session').addEventListener('click', () => {
-        clearSession();
-        showToast('Logged Out', 'Your session was cleared.', 'info');
-    });
+    const logoutBtn = document.getElementById('btn-logout-session');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+            clearSession();
+            showToast('Logged Out', 'Your session was cleared.', 'info');
+        });
+    }
 
     // Load initial session
     checkSession();
@@ -206,34 +328,51 @@ function initAuth() {
 function checkSession() {
     const sessionData = localStorage.getItem('smartcivic_session');
     const authModal = document.getElementById('auth-modal');
+    const loginPanel = document.getElementById('login-panel');
+    const signupPanel = document.getElementById('signup-panel');
     const banner = document.getElementById('user-profile-banner');
     const loginTriggerBtn = document.getElementById('btn-login-trigger');
+    const closeAuthBtn = document.getElementById('btn-close-auth-modal');
     
     if (sessionData) {
         currentUser = JSON.parse(sessionData);
+        document.body.classList.remove('landing-page');
         authModal.classList.add('hidden');
         banner.classList.remove('hidden');
-        loginTriggerBtn.classList.add('hidden');
+        if (loginTriggerBtn) loginTriggerBtn.classList.add('hidden');
+        if (closeAuthBtn) closeAuthBtn.style.display = 'block';
 
         // Populate banner text
         document.getElementById('lbl-user-name').textContent = currentUser.name;
         document.getElementById('lbl-user-role').textContent = currentUser.role.toUpperCase();
 
-        // Enforce views and tab restrictions based on role
+        // Auto-fill complaint form fields if user is logged in
+        if (currentUser.gmail) {
+            const formGmail = document.getElementById('form-gmail');
+            if (formGmail && !formGmail.value) formGmail.value = currentUser.gmail;
+        }
+        if (currentUser.contact) {
+            const formContact = document.getElementById('form-contact');
+            if (formContact && !formContact.value) formContact.value = currentUser.contact;
+        }
+
+        // Redirect user to their role dashboard
         enforceRoleRestrictions();
         fetchWorkers();
     } else {
         currentUser = null;
+        document.body.classList.add('landing-page');
         authModal.classList.remove('hidden');
+        if (loginPanel) loginPanel.classList.remove('hidden');
+        if (signupPanel) signupPanel.classList.add('hidden');
         banner.classList.add('hidden');
-        loginTriggerBtn.classList.remove('hidden');
+        if (loginTriggerBtn) loginTriggerBtn.classList.add('hidden');
+        if (closeAuthBtn) closeAuthBtn.style.display = 'none';
         
-        // Show Citizen Portal for Guest access
-        document.getElementById('btn-citizen').style.display = 'flex';
+        document.getElementById('btn-citizen').style.display = 'none';
         document.getElementById('btn-authority').style.display = 'none';
         document.getElementById('btn-worker').style.display = 'none';
         document.getElementById('btn-journalist').style.display = 'none';
-        switchTab('citizen-portal');
     }
 }
 
@@ -267,7 +406,8 @@ function enforceRoleRestrictions() {
         switchTab('authority-dashboard');
     } else if (currentUser.role === 'worker') {
         btnWorker.style.display = 'flex';
-        document.getElementById('val-worker-name').textContent = currentUser.name;
+        const valWorkerName = document.getElementById('val-worker-name');
+        if (valWorkerName) valWorkerName.textContent = currentUser.name;
         switchTab('worker-module');
     } else if (currentUser.role === 'journalist') {
         btnJournalist.style.display = 'flex';
@@ -332,12 +472,18 @@ function switchTab(tabId) {
 // Initialize Leaflet Maps
 function initMaps() {
     // 1. Citizen Picker Map
-    pickerMap = L.map('map-picker').setView([DEFAULT_LAT, DEFAULT_LNG], 13);
+    const initialLat = locationAcquiredFromGps ? userCurrentLat : DEFAULT_LAT;
+    const initialLng = locationAcquiredFromGps ? userCurrentLng : DEFAULT_LNG;
+    pickerMap = L.map('map-picker').setView([initialLat, initialLng], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(pickerMap);
 
-    pickerMarker = L.marker([DEFAULT_LAT, DEFAULT_LNG], { draggable: true }).addTo(pickerMap);
+    pickerMarker = L.marker([initialLat, initialLng], { draggable: true }).addTo(pickerMap);
+    pickerMarker.bindPopup("<strong>Drag pin</strong> or <strong>click map</strong> to set your exact location (e.g. RR Nagar)");
+    if (locationAcquiredFromGps) {
+        updateCoordsInForm(initialLat, initialLng);
+    }
     
     // Set form coordinates on drag end
     pickerMarker.on('dragend', function (event) {
@@ -482,11 +628,30 @@ function getWardByLocation(lat, lng) {
     }
 }
 
+let reverseGeocodeTimer = null;
 function updateCoordsInForm(lat, lng) {
     document.getElementById('val-latitude').textContent = lat.toFixed(6);
     document.getElementById('val-longitude').textContent = lng.toFixed(6);
     
-    // Smart Ward dynamic preview removed
+    const lblAddress = document.getElementById('lbl-address-string');
+    if (lblAddress) {
+        lblAddress.textContent = 'Fetching address...';
+        if (reverseGeocodeTimer) clearTimeout(reverseGeocodeTimer);
+        reverseGeocodeTimer = setTimeout(() => {
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.display_name) {
+                    lblAddress.textContent = data.display_name;
+                } else {
+                    lblAddress.textContent = `Coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+                }
+            })
+            .catch(() => {
+                lblAddress.textContent = `Coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            });
+        }, 400);
+    }
 }
 
 // Forms & Inputs handling
@@ -512,42 +677,94 @@ function initForms() {
         });
     }
 
-    // Citizen GPS fetch
+    // Citizen GPS fetch - Auto Detect Current Location
     const btnGps = document.getElementById('btn-gps-detect');
     btnGps.addEventListener('click', () => {
-        if (navigator.geolocation) {
-            btnGps.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Locating...';
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    pickerMarker.setLatLng([lat, lng]);
-                    pickerMap.setView([lat, lng], 15);
-                    updateCoordsInForm(lat, lng);
-                    btnGps.innerHTML = '<i class="fa-solid fa-check"></i> GPS Sync';
-                    showToast('Location Detected', 'Set coordinates to your browser location.', 'success');
-                },
-                (error) => {
-                    // Fallback to randomized local area coords
-                    const randLat = DEFAULT_LAT + (Math.random() - 0.5) * 0.04;
-                    const randLng = DEFAULT_LNG + (Math.random() - 0.5) * 0.04;
-                    pickerMarker.setLatLng([randLat, randLng]);
-                    pickerMap.setView([randLat, randLng], 14);
-                    updateCoordsInForm(randLat, randLng);
-                    btnGps.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Mock Location';
-                    showToast('GPS Timeout', 'Using local mock coordinates for demo environment.', 'info');
-                },
-                { timeout: 6000 }
-            );
+        if (!navigator.geolocation) {
+            showToast('GPS Not Supported', 'Geolocation is not supported by your browser.', 'error');
+            return;
         }
+
+        btnGps.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Locating...';
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                userCurrentLat = lat;
+                userCurrentLng = lng;
+                locationAcquiredFromGps = true;
+                if (pickerMarker && pickerMap) {
+                    pickerMarker.setLatLng([lat, lng]);
+                    pickerMap.setView([lat, lng], 16);
+                }
+                updateCoordsInForm(lat, lng);
+                btnGps.innerHTML = '<i class="fa-solid fa-check"></i> GPS Synced';
+                showToast('Location Detected', `Current location acquired!`, 'success');
+            },
+            (error) => {
+                // Fallback attempt without high accuracy constraint
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        const lat = pos.coords.latitude;
+                        const lng = pos.coords.longitude;
+                        userCurrentLat = lat;
+                        userCurrentLng = lng;
+                        locationAcquiredFromGps = true;
+                        if (pickerMarker && pickerMap) {
+                            pickerMarker.setLatLng([lat, lng]);
+                            pickerMap.setView([lat, lng], 15);
+                        }
+                        updateCoordsInForm(lat, lng);
+                        btnGps.innerHTML = '<i class="fa-solid fa-check"></i> Location Synced';
+                        showToast('Location Acquired', `Set to current browser position.`, 'info');
+                    },
+                    (err2) => {
+                        btnGps.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> GPS Error';
+                        let msg = 'Could not acquire current location. Tap on the map to place the pin.';
+                        if (err2.code === err2.PERMISSION_DENIED) {
+                            msg = 'Location permission was denied. Please allow location access in your browser.';
+                        }
+                        showToast('Location Detection Error', msg, 'warning');
+                    },
+                    { enableHighAccuracy: false, timeout: 8000 }
+                );
+            },
+            { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+        );
     });
 
-    // Image Upload Previews
+    // Image Upload Previews & EXIF GPS extraction
     const imageInput = document.getElementById('form-image');
     const dropArea = imageInput.closest('.file-drop-area');
     const previewContainer = document.getElementById('image-preview-container');
     const previewImg = document.getElementById('image-preview');
     const btnRemove = document.getElementById('btn-remove-image');
+
+    const parseGeotagRegex = (text) => {
+        if (!text) return null;
+        const match = text.match(/(?:Lat|Latitude|lat)?\s*[:=]?\s*([+-]?\d{1,2}\.\d+)\D+(?:Long|Longitude|lng|lon)?\s*[:=]?\s*([+-]?\d{1,3}\.\d+)/i);
+        if (match) {
+            const lat = parseFloat(match[1]);
+            const lng = parseFloat(match[2]);
+            if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                return { latitude: lat, longitude: lng };
+            }
+        }
+        return null;
+    };
+
+    const descriptionInput = document.getElementById('form-description');
+    if (descriptionInput) {
+        descriptionInput.addEventListener('input', (e) => {
+            const coords = parseGeotagRegex(e.target.value);
+            if (coords && pickerMarker && pickerMap) {
+                pickerMarker.setLatLng([coords.latitude, coords.longitude]);
+                pickerMap.setView([coords.latitude, coords.longitude], 16);
+                updateCoordsInForm(coords.latitude, coords.longitude);
+                showToast('Geotag Coords Detected', `Geotag GPS location updated: ${coords.latitude}, ${coords.longitude}`, 'info');
+            }
+        });
+    }
 
     imageInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -559,6 +776,69 @@ function initForms() {
                 dropArea.classList.add('hidden');
             }
             reader.readAsDataURL(file);
+
+            // 1. Client-side EXIF GPS Extraction
+            if (window.exifr) {
+                window.exifr.gps(file).then(coords => {
+                    if (coords && coords.latitude && coords.longitude) {
+                        const lat = coords.latitude;
+                        const lng = coords.longitude;
+                        if (pickerMarker && pickerMap) {
+                            pickerMarker.setLatLng([lat, lng]);
+                            pickerMap.setView([lat, lng], 16);
+                            updateCoordsInForm(lat, lng);
+                            showToast('GPS Photo Geotag Detected', `Map pinned to exact photo location: ${lat.toFixed(5)}, ${lng.toFixed(5)}`, 'success');
+                        }
+                    }
+                }).catch(err => {
+                    console.log("No client EXIF GPS metadata in photo", err);
+                });
+            }
+
+            // 2. Client-side Tesseract.js OCR Watermark Extraction (reads burned-in GPS Map Camera text)
+            if (window.Tesseract) {
+                showToast('Scanning Photo', 'AI scanning photo for GPS geotag watermark...', 'info');
+                window.Tesseract.recognize(file, 'eng')
+                .then(result => {
+                    if (result && result.data && result.data.text) {
+                        const ocrCoords = parseGeotagRegex(result.data.text);
+                        if (ocrCoords && pickerMarker && pickerMap) {
+                            pickerMarker.setLatLng([ocrCoords.latitude, ocrCoords.longitude]);
+                            pickerMap.setView([ocrCoords.latitude, ocrCoords.longitude], 16);
+                            updateCoordsInForm(ocrCoords.latitude, ocrCoords.longitude);
+                            showToast('Geotag Photo Processed', `Location automatically pinned on map: ${ocrCoords.latitude}, ${ocrCoords.longitude}`, 'success');
+                        }
+                    }
+                })
+                .catch(err => console.log("Client OCR watermark check skipped:", err));
+            }
+
+            // 3. Server-side Geotag Preview Parser (handles EXIF + text watermarks)
+            const formData = new FormData();
+            formData.append('image', file);
+            const descVal = document.getElementById('form-description') ? document.getElementById('form-description').value : '';
+            if (descVal) formData.append('description', descVal);
+
+            fetch(`${API_BASE}/api/parse-geotag`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.found && data.latitude && data.longitude) {
+                    const lat = data.latitude;
+                    const lng = data.longitude;
+                    if (pickerMarker && pickerMap) {
+                        pickerMarker.setLatLng([lat, lng]);
+                        pickerMap.setView([lat, lng], 16);
+                        updateCoordsInForm(lat, lng);
+                        showToast('Geotag Photo Processed', `Location automatically pinned on map: ${lat}, ${lng}`, 'success');
+                    }
+                }
+            })
+            .catch(err => {
+                console.warn("Geotag preview endpoint skipped:", err);
+            });
         }
     });
 
@@ -607,6 +887,8 @@ function initForms() {
         const latitude = document.getElementById('val-latitude').textContent;
         const longitude = document.getElementById('val-longitude').textContent;
         const contact = document.getElementById('form-contact').value;
+        const formGmailEl = document.getElementById('form-gmail');
+        const gmail = formGmailEl ? formGmailEl.value.trim() : '';
         const image = imageInput.files[0];
 
         const formData = new FormData();
@@ -614,6 +896,9 @@ function initForms() {
         formData.append('latitude', latitude);
         formData.append('longitude', longitude);
         formData.append('contact', contact);
+        if (gmail) {
+            formData.append('gmail', gmail);
+        }
         if (image) {
             formData.append('image', image);
         }
@@ -623,12 +908,17 @@ function initForms() {
             method: 'POST',
             body: formData
         })
-        .then(response => {
-            if (!response.ok) throw new Error('API request failed');
-            return response.json();
+        .then(async response => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const errorMsg = data.error || 'Server rejected complaint submission.';
+                throw new Error(errorMsg);
+            }
+            return data;
         })
         .then(data => {
-            showToast('Complaint Filed', `ID: ${data.complaint_id} saved successfully!`, 'success');
+            const toastMsg = gmail ? `ID: ${data.complaint_id} filed! Tracking details dispatched to ${gmail}.` : `ID: ${data.complaint_id} saved successfully!`;
+            showToast('Complaint Filed', toastMsg, 'success');
             
             // Clear Form
             reportForm.reset();
@@ -655,7 +945,7 @@ function initForms() {
         })
         .catch(err => {
             console.error(err);
-            showToast('Error Submitting', 'Could not establish connection to city servers.', 'error');
+            showToast('Error Submitting', err.message || 'Could not establish connection to city servers.', 'error');
         })
         .finally(() => {
             submitBtn.disabled = false;
@@ -932,9 +1222,6 @@ function trackComplaint(id) {
 function loadDashboardData() {
     // 1. Stats Counter API
     let analyticsUrl = `${API_BASE}/api/analytics`;
-    if (currentUser && currentUser.created_at) {
-        analyticsUrl += `?created_after=${currentUser.created_at}`;
-    }
     fetch(analyticsUrl)
     .then(res => res.json())
     .then(data => {
@@ -955,7 +1242,6 @@ function loadDashboardData() {
     const params = [];
     if (status) params.push(`status=${status}`);
     if (priority) params.push(`priority=${priority}`);
-    if (currentUser && currentUser.created_at) params.push(`created_after=${currentUser.created_at}`);
     if (params.length > 0) {
         url += `?${params.join('&')}`;
     }
@@ -1129,10 +1415,6 @@ function loadWorkerTasks() {
     if (!currentUser || currentUser.role !== 'worker') return;
 
     let url = `${API_BASE}/api/complaints`;
-    if (currentUser && currentUser.created_at) {
-        url += `?created_after=${currentUser.created_at}`;
-    }
-
     fetch(url)
     .then(res => res.json())
     .then(complaints => {
@@ -1331,9 +1613,6 @@ function loadJournalistData() {
 
     // 1. Fetch redirected complaints (5-min rule unopened ones)
     let complaintsUrl = `${API_BASE}/api/complaints?redirected_to_journalist=true`;
-    if (currentUser && currentUser.created_at) {
-        complaintsUrl += `&created_after=${currentUser.created_at}`;
-    }
     fetch(complaintsUrl)
     .then(res => res.json())
     .then(complaints => {
@@ -1705,9 +1984,6 @@ function generateTurnByTurnDirections(startLat, startLng, destLat, destLng, comp
 // CITIZEN PORTAL COMPLAINTS BOARD
 function loadCitizenComplaints() {
     let url = `${API_BASE}/api/complaints`;
-    if (currentUser && currentUser.created_at) {
-        url += `?created_after=${currentUser.created_at}`;
-    }
     fetch(url)
     .then(res => res.json())
     .then(complaints => {

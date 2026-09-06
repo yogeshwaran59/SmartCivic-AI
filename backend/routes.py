@@ -1,15 +1,42 @@
 import os
 import uuid
-from datetime import datetime
-from flask import Blueprint, request, jsonify, Response, current_app
+import secrets
+from datetime import datetime, timezone
+from functools import wraps
+from flask import Blueprint, request, jsonify, Response, current_app, render_template, session, redirect, url_for
 from werkzeug.utils import secure_filename
-from models import db, User, Complaint, StatusLog
-from ai_processor import classify_complaint_text, haversine_distance, get_image_similarity, analyze_and_describe_image
+from models import db, User, Complaint, StatusLog, JournalistReport
+from ai_processor import classify_complaint_text, haversine_distance, get_image_similarity, analyze_and_describe_image, extract_exif_gps, parse_coordinates_from_text, extract_text_from_image_watermark
+from email_service import (
+    send_complaint_confirmation_email,
+    send_complaint_status_update_email,
+    send_welcome_email,
+    send_geotag_authority_alert,
+    send_geotag_worker_assignment,
+    send_authority_pending_approval_email,
+    send_authority_approval_email,
+    send_authority_key_regenerated_email,
+    send_authority_rejection_email
+)
 
 routes_bp = Blueprint('routes', __name__)
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Admin Authentication Decorator & Key Generator
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('is_admin'):
+            if request.path.startswith('/api/admin'):
+                return jsonify({'error': 'Unauthorized: Master Admin login required.'}), 401
+            return redirect('/admin/login')
+        return f(*args, **kwargs)
+    return decorated_function
+
+def generate_secret_key():
+    return f"AUTH-{secrets.token_hex(2).upper()}-{secrets.token_hex(2).upper()}"
 
 # Helper function for smart ward routing
 def get_ward_by_location(lat, lng):
@@ -19,6 +46,70 @@ def get_ward_by_location(lat, lng):
         return 'ward_1' if lng < 77.59 else 'ward_2'
     else:
         return 'ward_3'
+
+@routes_bp.route('/api/parse-geotag', methods=['POST'])
+def parse_geotag_endpoint():
+    """
+    Instantly extracts GPS latitude & longitude from an uploaded photo (EXIF metadata or visual watermark text).
+    Returns JSON: { "found": True, "latitude": 12.880975, "longitude": 77.545679, "ward": "ward_3" }
+    """
+    try:
+        image_file = request.files.get('image')
+        if not image_file or not image_file.filename:
+            return jsonify({'found': False, 'message': 'No image file provided.'}), 400
+
+        temp_filename = f"PREVIEW_{uuid.uuid4().hex[:6]}_{secure_filename(image_file.filename)}"
+        temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
+        image_file.save(temp_path)
+
+        lat, lng = None, None
+
+        # 1. Try EXIF GPS metadata extraction
+        try:
+            ex_lat, ex_lng = extract_exif_gps(temp_path)
+            if ex_lat is not None and ex_lng is not None:
+                lat, lng = ex_lat, ex_lng
+                print(f"[PREVIEW GEOTAG] EXIF GPS extracted: ({lat}, {lng})")
+        except Exception as ex_err:
+            print(f"[PREVIEW GEOTAG EXIF WARNING] {ex_err}")
+
+        # 2. Try text / regex scanning from description or filename
+        if lat is None or lng is None:
+            desc = request.form.get('description', '') or image_file.filename
+            txt_lat, txt_lng = parse_coordinates_from_text(desc)
+            if txt_lat is not None and txt_lng is not None:
+                lat, lng = txt_lat, txt_lng
+                print(f"[PREVIEW GEOTAG] Text GPS parsed: ({lat}, {lng})")
+
+        # 3. Try OCR on image watermark (reads burned-in GPS Map Camera text)
+        if lat is None or lng is None:
+            try:
+                ocr_lat, ocr_lng = extract_text_from_image_watermark(temp_path)
+                if ocr_lat is not None and ocr_lng is not None:
+                    lat, lng = ocr_lat, ocr_lng
+                    print(f"[PREVIEW GEOTAG] OCR watermark GPS extracted: ({lat}, {lng})")
+            except Exception as ocr_err:
+                print(f"[PREVIEW GEOTAG OCR WARNING] {ocr_err}")
+
+        # Clean up temp file
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+        if lat is not None and lng is not None:
+            ward = get_ward_by_location(lat, lng)
+            return jsonify({
+                'found': True,
+                'latitude': lat,
+                'longitude': lng,
+                'ward': ward
+            }), 200
+
+        return jsonify({'found': False, 'message': 'No GPS geotag found in photo.'}), 200
+    except Exception as e:
+        return jsonify({'found': False, 'error': str(e)}), 500
 
 @routes_bp.route('/api/complaints', methods=['POST'])
 def create_complaint():
@@ -36,6 +127,7 @@ def create_complaint():
         latitude_str = request.form.get('latitude')
         longitude_str = request.form.get('longitude')
         contact = request.form.get('contact', '')
+        citizen_gmail = request.form.get('gmail') or request.form.get('citizen_gmail') or ''
 
         if not description or not latitude_str or not longitude_str:
             return jsonify({'error': 'Description, latitude, and longitude are required.'}), 400
@@ -49,7 +141,7 @@ def create_complaint():
         # Create unique ID for complaint
         complaint_id = f"COMP-{uuid.uuid4().hex[:6].upper()}"
 
-        # Handle image upload
+        # Handle image upload & Geotag extraction
         image_file = request.files.get('image')
         image_path = None
         if image_file and image_file.filename:
@@ -58,14 +150,45 @@ def create_complaint():
             image_file.save(save_path)
             image_path = f"/uploads/{filename}"
 
-        # Smart Ward Routing
+            # Auto-extract EXIF GPS location from uploaded photo if available
+            ex_lat, ex_lng = extract_exif_gps(save_path)
+            if ex_lat is not None and ex_lng is not None:
+                latitude = ex_lat
+                longitude = ex_lng
+                print(f"[AI GEOTAG EXTRACTOR] Photo EXIF GPS extracted: ({latitude}, {longitude})")
+            else:
+                # Try OCR on image watermark (GPS Map Camera burned-in text)
+                try:
+                    ocr_lat, ocr_lng = extract_text_from_image_watermark(save_path)
+                    if ocr_lat is not None and ocr_lng is not None:
+                        latitude = ocr_lat
+                        longitude = ocr_lng
+                        print(f"[AI GEOTAG EXTRACTOR] OCR watermark GPS extracted: ({latitude}, {longitude})")
+                except Exception as ocr_err:
+                    print(f"[AI GEOTAG EXTRACTOR OCR WARNING] {ocr_err}")
+
+        # Parse text/description for geotag coordinates (e.g. Lat 12.880975 Long 77.545679)
+        txt_lat, txt_lng = parse_coordinates_from_text(description)
+        if txt_lat is not None and txt_lng is not None:
+            latitude = txt_lat
+            longitude = txt_lng
+            print(f"[AI GEOTAG EXTRACTOR] Watermark Geotag Text GPS parsed: ({latitude}, {longitude})")
+
+        # Smart Ward Routing based on GPS Location
         ward = get_ward_by_location(latitude, longitude)
 
         # AI Classifier: Auto category & priority
         category, priority = classify_complaint_text(description)
 
+        # Auto-Assign to Ward Worker if available
+        assigned_worker = User.query.filter_by(role='worker', ward=ward).first()
+        if not assigned_worker:
+            assigned_worker = User.query.filter_by(role='worker').first()
+
+        assigned_to_id = assigned_worker.id if assigned_worker else None
+        initial_status = 'Assigned' if assigned_worker else 'Submitted'
+
         # AI Duplicate Check: Find nearby complaints (50m radius)
-        # and compare images if both exist
         duplicate_flag = False
         duplicate_of = None
         existing_complaints = Complaint.query.filter(
@@ -86,7 +209,6 @@ def create_complaint():
                         duplicate_of = ext.complaint_id
                         break
                 else:
-                    # If no images, check if category matches and descriptions are similar
                     if category == ext.category:
                         duplicate_flag = True
                         duplicate_of = ext.complaint_id
@@ -95,8 +217,11 @@ def create_complaint():
         # Run image analysis
         image_analysis = None
         if image_path:
-            abs_path_new = os.path.join(os.path.dirname(__file__), image_path.lstrip('/'))
-            image_analysis = analyze_and_describe_image(abs_path_new)
+            try:
+                abs_path_new = os.path.join(os.path.dirname(__file__), image_path.lstrip('/'))
+                image_analysis = analyze_and_describe_image(abs_path_new)
+            except Exception as img_err:
+                print(f"[WARNING] Image analysis skipped due to error: {img_err}")
 
         # Save to database
         new_complaint = Complaint(
@@ -107,44 +232,76 @@ def create_complaint():
             longitude=longitude,
             category=category,
             priority=priority,
-            status='Submitted',
-            created_at=datetime.utcnow(),
-            escalation_flag=duplicate_flag,  # We can flag it, or keep track of duplicate
+            status=initial_status,
+            assigned_to=assigned_to_id,
+            created_at=datetime.now(timezone.utc),
+            opened_at=datetime.now(timezone.utc) if assigned_worker else None,
+            escalation_flag=duplicate_flag,
             ward=ward,
-            image_analysis=image_analysis
+            image_analysis=image_analysis,
+            citizen_gmail=citizen_gmail if citizen_gmail else None
         )
         
         # Add to session
         db.session.add(new_complaint)
-        db.session.flush() # Populate models to write to log
+        db.session.flush()
 
         # Initial Status Log
-        log_status = "Submitted"
+        log_status = f"Assigned to {assigned_worker.name} ({ward})" if assigned_worker else "Submitted"
         if duplicate_flag:
-            log_status = f"Submitted (Duplicate of {duplicate_of})"
+            log_status += f" (Duplicate of {duplicate_of})"
             
         log = StatusLog(
             complaint_id=complaint_id,
             status=log_status,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
         db.session.add(log)
         db.session.commit()
 
-        # Print mock SMS log
+        # Console & System Dispatch Log
         print(f"============================================================")
-        print(f"[NEW] COMPLAINT RECEIVED: {complaint_id}")
-        print(f"Location: {latitude}, {longitude} -> Assigned to Ward: {ward}")
-        print(f"AI Categorization: Category='{category}', Priority='{priority}'")
-        if duplicate_flag:
-            print(f"WARNING: AI DUPLICATE CHECK: Flagged as DUPLICATE of {duplicate_of}")
-        print(f"MOCK SMS SENT TO CITIZEN ({contact}): "
-              f"'Thank you for reporting! Your complaint ID is {complaint_id}. Status: {log_status}. Ward: {ward}.'")
+        print(f"[NEW GEOTAG COMPLAINT] ID: {complaint_id}")
+        print(f"GPS Coords: ({latitude}, {longitude}) -> Assigned Ward: {ward}")
+        print(f"AI Category: '{category}', Priority: '{priority}', Status: '{initial_status}'")
+        if assigned_worker:
+            print(f"Auto-Assigned Field Worker: {assigned_worker.name} (ID: {assigned_worker.id})")
         print(f"============================================================")
 
         response_data = new_complaint.to_dict()
         response_data['is_duplicate'] = duplicate_flag
         response_data['duplicate_of'] = duplicate_of
+
+        # Send Gmail confirmation email safely to Citizen
+        if citizen_gmail:
+            try:
+                user_account = User.query.filter_by(gmail=citizen_gmail).first()
+                sender_g = user_account.gmail if user_account else citizen_gmail
+                sender_p = user_account.password if user_account else None
+                send_complaint_confirmation_email(citizen_gmail, response_data, sender_gmail=sender_g, sender_password=sender_p)
+            except Exception as mail_err:
+                print(f"[WARNING] Citizen confirmation email error: {mail_err}")
+
+        # Send Geotag Alert Email to Authorities in that Ward
+        authorities = User.query.filter_by(role='authority', ward=ward).all()
+        if not authorities:
+            authorities = User.query.filter_by(role='authority').all()
+
+        for auth in authorities:
+            if auth.gmail:
+                try:
+                    send_geotag_authority_alert(auth.gmail, response_data)
+                    print(f"[GEOTAG DISPATCH] Alert email sent to Authority: {auth.name} ({auth.gmail})")
+                except Exception as auth_err:
+                    print(f"[WARNING] Geotag authority dispatch email error: {auth_err}")
+
+        # Send Geotag Task Assignment Email to Assigned Worker
+        if assigned_worker and assigned_worker.gmail:
+            try:
+                send_geotag_worker_assignment(assigned_worker.gmail, response_data)
+                print(f"[GEOTAG DISPATCH] Task assignment email sent to Worker: {assigned_worker.name} ({assigned_worker.gmail})")
+            except Exception as wrk_err:
+                print(f"[WARNING] Geotag worker dispatch email error: {wrk_err}")
 
         return jsonify(response_data), 201
 
@@ -338,7 +495,7 @@ def update_complaint(id):
 
         # Manage dates
         if status in ['Assigned', 'In Progress'] and not complaint.opened_at:
-            complaint.opened_at = datetime.utcnow()
+            complaint.opened_at = datetime.now(timezone.utc)
 
         # Handle resolution image (if file uploaded during PUT)
         resolution_file = request.files.get('resolution_image') if not request.is_json else None
@@ -365,7 +522,7 @@ def update_complaint(id):
             complaint_id=id,
             status=status,
             notes=notes,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
         db.session.add(log)
         db.session.commit()
@@ -379,6 +536,13 @@ def update_complaint(id):
             print(f"   Assigned Worker ID: {complaint.assigned_to} ({worker_name})")
         print(f"MOCK SMS SENT: 'Complaint {id} status updated to {status}.'")
         print(f"============================================================")
+
+        # Dispatch status update email to citizen's Gmail if available
+        if complaint.citizen_gmail:
+            user_account = User.query.filter_by(gmail=complaint.citizen_gmail).first()
+            sender_g = user_account.gmail if user_account else complaint.citizen_gmail
+            sender_p = user_account.password if user_account else None
+            send_complaint_status_update_email(complaint.citizen_gmail, complaint.to_dict(), notes, sender_gmail=sender_g, sender_password=sender_p)
 
         return jsonify(complaint.to_dict()), 200
 
@@ -560,7 +724,8 @@ def exotel_webhook():
         category = category_map.get(digits, 'other')
 
         # Process complaint in background thread for INSTANT response to Exotel
-        app_obj = current_app._get_current_object()
+        get_obj = getattr(current_app, '_get_current_object', lambda: current_app)
+        app_obj = get_obj()
 
         def _process_complaint():
             with app_obj.app_context():
@@ -583,7 +748,7 @@ def exotel_webhook():
                         category=category,
                         priority=priority,
                         status='Submitted',
-                        created_at=datetime.utcnow(),
+                        created_at=datetime.now(timezone.utc),
                         escalation_flag=False,
                         ward=ward
                     )
@@ -592,7 +757,7 @@ def exotel_webhook():
                     log = StatusLog(
                         complaint_id=complaint_id,
                         status="Submitted (Exotel IVR)",
-                        timestamp=datetime.utcnow()
+                        timestamp=datetime.now(timezone.utc)
                     )
                     db.session.add(log)
                     db.session.commit()
@@ -644,15 +809,16 @@ def exotel_webhook():
 def signup():
     """
     Register a new user account.
+    If role == 'authority', sets approval_status = 'pending_approval' (awaiting admin approval & secret key).
     """
     try:
-        data = request.json
+        data = request.json or {}
         name = data.get('name')
         gmail = data.get('gmail')
         password = data.get('password')
-        role = data.get('role')  # 'citizen' | 'worker' | 'authority'
+        role = data.get('role')  # 'citizen' | 'worker' | 'authority' | 'journalist'
         contact = data.get('contact')
-        ward = data.get('ward', 'general')
+        ward = data.get('ward', 'ward_1')
 
         if not name or not gmail or not password or not role or not contact:
             return jsonify({'error': 'Name, Gmail, Password, Role, and Contact are required.'}), 400
@@ -662,20 +828,34 @@ def signup():
         if existing_user:
             return jsonify({'error': 'A user with this Gmail address already exists.'}), 409
 
+        if role == 'authority':
+            approval_status = 'pending_approval'
+            secret_key = None
+        else:
+            approval_status = 'approved'
+            secret_key = None
+
         new_user = User(
             name=name,
             gmail=gmail,
             password=password,
             role=role,
             contact=contact,
-            ward=ward
+            ward=ward,
+            approval_status=approval_status,
+            secret_key=secret_key
         )
         db.session.add(new_user)
         db.session.commit()
 
         print(f"============================================================")
-        print(f"[AUTH] New user registered: {name} ({role}) - Gmail: {gmail}")
+        print(f"[AUTH] New user registered: {name} ({role}) - Gmail: {gmail} (Status: {approval_status})")
         print(f"============================================================")
+
+        if role == 'authority':
+            send_authority_pending_approval_email(new_user.to_dict())
+        else:
+            send_welcome_email(new_user.to_dict(), sender_gmail=gmail, sender_password=password)
 
         return jsonify(new_user.to_dict()), 201
     except Exception as e:
@@ -683,28 +863,235 @@ def signup():
         return jsonify({'error': str(e)}), 500
 
 
+from werkzeug.security import generate_password_hash, check_password_hash
+
+def verify_password(stored_password, provided_password):
+    if not stored_password or not provided_password:
+        return False
+    if stored_password.startswith(('scrypt:', 'pbkdf2:', 'bcrypt:', 'argon2:')):
+        try:
+            if check_password_hash(stored_password, provided_password):
+                return True
+        except Exception:
+            pass
+    return stored_password == provided_password
+
 @routes_bp.route('/api/auth/login', methods=['POST'])
 def login():
     """
-    Authenticate a user and return their details.
+    Authenticate a user.
+    For authorities, requires 3-factor authentication (Gmail + Password + Secret Key) and approved status.
     """
     try:
-        data = request.json
-        gmail = data.get('gmail')
-        password = data.get('password')
+        data = request.json or {}
+        gmail = data.get('gmail', '').strip()
+        password = data.get('password', '')
+        secret_key = (data.get('secret_key') or '').strip()
 
         if not gmail or not password:
             return jsonify({'error': 'Gmail and Password are required.'}), 400
 
         user = User.query.filter_by(gmail=gmail).first()
-        if not user or user.password != password:
+        if not user or not verify_password(user.password, password):
             return jsonify({'error': 'Invalid Gmail address or password.'}), 401
+
+        # Authority Specific Verification
+        if user.role == 'authority':
+            if user.approval_status == 'pending_approval':
+                return jsonify({
+                    'error': 'Your registration is awaiting Municipal Admin approval. You will receive your Secret Key via Gmail once approved.',
+                    'pending_approval': True
+                }), 403
+            elif user.approval_status == 'rejected':
+                return jsonify({
+                    'error': 'Your municipal authority registration was declined by Admin.'
+                }), 403
+            elif user.approval_status == 'suspended':
+                return jsonify({
+                    'error': 'Your municipal authority account has been suspended by Admin.'
+                }), 403
+
+            # Verify Secret Key
+            if not secret_key:
+                return jsonify({
+                    'error': 'Secret Authorization Key is required for Authority login. Please enter the key sent to your Gmail.'
+                }), 401
+            
+            if secret_key != (user.secret_key or '').strip():
+                return jsonify({
+                    'error': 'Invalid Secret Authorization Key. Please verify the key sent to your Gmail.'
+                }), 401
 
         print(f"============================================================")
         print(f"[AUTH] User logged in: {user.name} ({user.role})")
         print(f"============================================================")
 
         return jsonify(user.to_dict()), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================
+# MASTER MUNICIPAL ADMIN PORTAL & ENDPOINTS (/admin)
+# ============================================================
+@routes_bp.route('/admin', methods=['GET'])
+def admin_root():
+    if session.get('is_admin'):
+        return redirect('/admin/dashboard')
+    return redirect('/admin/login')
+
+
+@routes_bp.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'GET':
+        if session.get('is_admin'):
+            return redirect('/admin/dashboard')
+        return render_template('admin_login.html', error=None)
+
+    # POST Login
+    email = request.form.get('email', '').strip()
+    password = request.form.get('password', '').strip()
+    pin = request.form.get('pin', '').strip()
+
+    expected_email = os.getenv('ADMIN_EMAIL', 'admin@smartcivic.ai').strip()
+    expected_password = os.getenv('ADMIN_PASSWORD', 'Admin@SmartCivic2026').strip()
+    expected_pin = os.getenv('ADMIN_SECRET_PIN', '7890').strip()
+
+    if email.lower() == expected_email.lower() and password == expected_password and pin == expected_pin:
+        session['is_admin'] = True
+        session['admin_email'] = email
+        print(f"[ADMIN AUTH] Master Administrator logged in from {request.remote_addr}")
+        return redirect('/admin/dashboard')
+    else:
+        return render_template('admin_login.html', error="Invalid Master Admin Email, Password, or Security PIN.")
+
+
+@routes_bp.route('/admin/logout', methods=['GET'])
+def admin_logout():
+    session.clear()
+    return redirect('/admin/login')
+
+
+@routes_bp.route('/admin/dashboard', methods=['GET'])
+@admin_required
+def admin_dashboard():
+    pending_authorities = User.query.filter_by(role='authority', approval_status='pending_approval').order_by(User.created_at.desc()).all()
+    active_authorities = User.query.filter(User.role == 'authority', User.approval_status != 'pending_approval').order_by(User.created_at.desc()).all()
+    complaints_count = Complaint.query.count()
+    workers_count = User.query.filter_by(role='worker').count()
+    escalations_count = Complaint.query.filter_by(escalation_flag=True).count()
+
+    return render_template(
+        'admin_dashboard.html',
+        pending_authorities=pending_authorities,
+        active_authorities=active_authorities,
+        complaints_count=complaints_count,
+        workers_count=workers_count,
+        escalations_count=escalations_count
+    )
+
+
+@routes_bp.route('/api/admin/authorities/<int:user_id>/approve', methods=['POST'])
+@admin_required
+def admin_approve_authority(user_id):
+    try:
+        user = db.session.get(User, user_id)
+        if not user or user.role != 'authority':
+            return jsonify({'error': 'Authority user not found'}), 404
+
+        new_key = generate_secret_key()
+        user.approval_status = 'approved'
+        user.secret_key = new_key
+        user.approved_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        print(f"[ADMIN APPROVAL] Approved authority {user.name} ({user.gmail}) - Issued Key: {new_key}")
+        send_authority_approval_email(user.to_dict(include_secret=True), new_key)
+
+        return jsonify({
+            'success': True,
+            'message': f'Authority {user.name} approved successfully.',
+            'secret_key': new_key,
+            'gmail': user.gmail
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@routes_bp.route('/api/admin/authorities/<int:user_id>/reject', methods=['POST'])
+@admin_required
+def admin_reject_authority(user_id):
+    try:
+        user = db.session.get(User, user_id)
+        if not user or user.role != 'authority':
+            return jsonify({'error': 'Authority user not found'}), 404
+
+        reason = (request.json or {}).get('reason', 'Official municipal authority verification could not be completed.')
+        user.approval_status = 'rejected'
+        db.session.commit()
+
+        print(f"[ADMIN REJECT] Declined authority application for {user.name} ({user.gmail})")
+        send_authority_rejection_email(user.to_dict(), reason=reason)
+
+        return jsonify({'success': True, 'message': 'Authority application rejected.'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@routes_bp.route('/api/admin/authorities/<int:user_id>/regenerate-key', methods=['POST'])
+@admin_required
+def admin_regenerate_key(user_id):
+    try:
+        user = db.session.get(User, user_id)
+        if not user or user.role != 'authority':
+            return jsonify({'error': 'Authority user not found'}), 404
+
+        new_key = generate_secret_key()
+        user.secret_key = new_key
+        user.approval_status = 'approved'
+        db.session.commit()
+
+        print(f"[ADMIN REGENERATE] Regenerated secret key for {user.name} ({user.gmail}) - New Key: {new_key}")
+        send_authority_key_regenerated_email(user.to_dict(include_secret=True), new_key)
+
+        return jsonify({
+            'success': True,
+            'message': 'Secret key regenerated and emailed successfully.',
+            'secret_key': new_key
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@routes_bp.route('/api/admin/authorities/<int:user_id>/toggle-status', methods=['POST'])
+@admin_required
+def admin_toggle_authority_status(user_id):
+    try:
+        user = db.session.get(User, user_id)
+        if not user or user.role != 'authority':
+            return jsonify({'error': 'Authority user not found'}), 404
+
+        action = (request.json or {}).get('action')
+        if action == 'suspend':
+            user.approval_status = 'suspended'
+        else:
+            user.approval_status = 'approved'
+        db.session.commit()
+
+        return jsonify({'success': True, 'status': user.approval_status}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@routes_bp.route('/api/admin/pending-count', methods=['GET'])
+def admin_pending_count():
+    try:
+        count = User.query.filter_by(role='authority', approval_status='pending_approval').count()
+        return jsonify({'pending_count': count}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
