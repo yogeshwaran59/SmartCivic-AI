@@ -29,9 +29,15 @@ let wardsChart = null;
 let activeComplaintsList = [];
 let activeWorkersList = [];
 let activeWorkerTask = null;
+let activeWorkerTasks = [];
 let showingHeatmap = false;
 let autoRefreshTimer = null;
 let currentlyTrackedId = null;
+let cachedTrackData = null;
+let currentNavData = null;
+let cachedCategoriesData = null;
+let publishedArticlesList = [];
+
 
 let userCurrentLat = 12.971598;
 let userCurrentLng = 77.594562;
@@ -61,6 +67,80 @@ const DEFAULT_LAT = 12.971598;
 const DEFAULT_LNG = 77.594562;
 
 // Initialize on load
+
+// Global Language Change Listener - Phase 4 Dynamic Content Re-rendering
+window.addEventListener('languageChanged', (e) => {
+    const lang = e.detail?.language || (window.getCurrentLang ? getCurrentLang() : 'en');
+
+    // 1. Update user profile banner
+    updateUserBanner();
+
+    // 2. Re-render complaints table if on authority tab
+    if (activeComplaintsList && activeComplaintsList.length > 0) {
+        if (activeTab === 'authority-dashboard') {
+            renderComplaintsTable(activeComplaintsList);
+        }
+        if (activeTab === 'citizen-portal') {
+            renderCitizenComplaintsList(activeComplaintsList);
+        }
+    }
+
+    // 3. Re-render category distribution chart with translated labels
+    if (cachedCategoriesData) {
+        renderCharts(cachedCategoriesData);
+    }
+
+    // 4. Re-render currently tracked complaint timeline
+    if (cachedTrackData) {
+        renderTrackerDetails(cachedTrackData);
+    }
+
+    // 5. Re-render worker tasks and active route
+    if (currentUser && currentUser.role === 'worker') {
+        if (activeWorkerTasks && activeWorkerTasks.length > 0) {
+            renderWorkerJobsList(activeWorkerTasks);
+        }
+        if (activeWorkerTask) {
+            openWorkerTaskMap(activeWorkerTask);
+        }
+    }
+
+    // 6. Re-render journalist section
+    if (currentUser && currentUser.role === 'journalist') {
+        if (activeRedirectedComplaints && activeRedirectedComplaints.length > 0) {
+            renderRedirectedList(activeRedirectedComplaints);
+        }
+        if (selectedRedirectedComplaint) {
+            inspectRedirectedComplaint(selectedRedirectedComplaint.complaint_id);
+        }
+        if (publishedArticlesList && publishedArticlesList.length > 0) {
+            renderPublishedFeed(publishedArticlesList);
+        }
+    }
+
+    // 7. Re-render turn-by-turn directions if navigation modal is active
+    if (currentNavData) {
+        generateTurnByTurnDirections(
+            currentNavData.startLat,
+            currentNavData.startLng,
+            currentNavData.destLat,
+            currentNavData.destLng,
+            currentNavData.complaintId
+        );
+    }
+});
+
+function updateUserBanner() {
+    const lblName = document.getElementById('lbl-user-name');
+    const lblRole = document.getElementById('lbl-user-role');
+    if (lblName) {
+        lblName.textContent = currentUser ? currentUser.name : (window.t ? t('guest', 'Guest') : 'Guest');
+    }
+    if (lblRole) {
+        lblRole.textContent = currentUser ? (window.getRoleTranslation ? getRoleTranslation(currentUser.role) : currentUser.role) : (window.t ? t('role_citizen', 'citizen') : 'citizen');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     initMaps();
@@ -103,16 +183,33 @@ document.addEventListener('DOMContentLoaded', () => {
 // Theme Management
 function initTheme() {
     const themeBtn = document.getElementById('theme-toggle-btn');
+    const savedTheme = localStorage.getItem('smartcivic_theme') || 'dark';
+
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+        if (themeBtn) {
+            const icon = themeBtn.querySelector('i');
+            if (icon) icon.className = 'fa-solid fa-sun';
+        }
+    } else {
+        document.body.classList.remove('light-theme');
+        if (themeBtn) {
+            const icon = themeBtn.querySelector('i');
+            if (icon) icon.className = 'fa-solid fa-moon';
+        }
+    }
+
     if (themeBtn) {
         themeBtn.addEventListener('click', () => {
             document.body.classList.toggle('light-theme');
+            const isLight = document.body.classList.contains('light-theme');
+            localStorage.setItem('smartcivic_theme', isLight ? 'light' : 'dark');
             const icon = themeBtn.querySelector('i');
             if (icon) {
-                if (document.body.classList.contains('light-theme')) {
-                    icon.className = 'fa-solid fa-sun';
-                } else {
-                    icon.className = 'fa-solid fa-moon';
-                }
+                icon.className = isLight ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+            }
+            if (typeof renderCharts === 'function' && typeof cachedCategoriesData !== 'undefined' && cachedCategoriesData) {
+                renderCharts(cachedCategoriesData);
             }
         });
     }
@@ -342,9 +439,8 @@ function checkSession() {
         if (loginTriggerBtn) loginTriggerBtn.classList.add('hidden');
         if (closeAuthBtn) closeAuthBtn.style.display = 'block';
 
-        // Populate banner text
-        document.getElementById('lbl-user-name').textContent = currentUser.name;
-        document.getElementById('lbl-user-role').textContent = currentUser.role.toUpperCase();
+        // Populate banner text with localization
+        updateUserBanner();
 
         // Auto-fill complaint form fields if user is logged in
         if (currentUser.gmail) {
@@ -1120,97 +1216,18 @@ function trackComplaint(id) {
         return res.json();
     })
     .then(data => {
-        const trackerResult = document.getElementById('tracker-result');
-        trackerResult.classList.remove('hidden');
-        
-        document.getElementById('track-id').textContent = data.complaint_id;
-        document.getElementById('track-description').textContent = data.description;
-        
-        // Category Badge
-        const catBadge = document.getElementById('track-category');
-        catBadge.textContent = data.category.replace('_', ' ').toUpperCase();
-        
-        // Status Badge
-        const statusBadge = document.getElementById('track-status-badge');
-        const oldStatus = statusBadge.textContent;
-        statusBadge.textContent = data.status;
-        statusBadge.className = `badge-status badge-${data.status.replace(' ', '')}`;
+        const oldStatus = cachedTrackData ? cachedTrackData.status : null;
+        renderTrackerDetails(data);
 
         if (oldStatus && oldStatus !== 'Resolved' && data.status === 'Resolved') {
-            showToast('Issue Resolved', `Your tracked complaint <strong>${data.complaint_id}</strong> has been successfully RESOLVED!`, 'success');
+            const resTitle = window.t ? t('toast_issue_resolved', 'Issue Resolved') : 'Issue Resolved';
+            const resMsg = window.t ? t('toast_complaint_resolved_msg', 'Your tracked complaint {id} has been successfully RESOLVED!', { id: data.complaint_id }) : `Your tracked complaint ${data.complaint_id} has been successfully RESOLVED!`;
+            showToast(resTitle, resMsg, 'success');
         }
 
-        // Priority
-        const prioritySpan = document.getElementById('track-priority');
-        prioritySpan.textContent = data.priority;
-        prioritySpan.className = `text-priority-${data.priority.toLowerCase()}`;
-
-        // Ward removed
-
-        // Worker
-        document.getElementById('track-worker').textContent = data.assigned_to_name || 'Not Assigned Yet';
-
-        // Image & Auto Description Analysis
-        const imgContainer = document.getElementById('track-image-container');
-        const analysisBox = document.getElementById('track-image-analysis-box');
-        const analysisText = document.getElementById('track-image-analysis-text');
-        
-        if (data.image_path) {
-            document.getElementById('track-image').src = `${API_BASE}${data.image_path}`;
-            imgContainer.classList.remove('hidden');
-            
-            if (data.image_analysis) {
-                analysisText.textContent = data.image_analysis;
-                analysisBox.classList.remove('hidden');
-            } else {
-                analysisBox.classList.add('hidden');
-            }
-        } else {
-            imgContainer.classList.add('hidden');
-        }
-
-        // Escalated flag banner
-        const escBanner = document.getElementById('track-escalation-banner');
-        if (data.escalation_flag) {
-            escBanner.classList.remove('hidden');
-        } else {
-            escBanner.classList.add('hidden');
-        }
-
-        // Reset all steps
-        document.querySelectorAll('.timeline-step').forEach(step => {
-            step.className = 'timeline-step';
-            const sName = step.id.replace('step-', '');
-            document.getElementById(`time-${sName}`).textContent = '-';
-        });
-
-        // Parse History and Activate steps
-        const statusesOrder = ['Submitted', 'Assigned', 'InProgress', 'Resolved'];
-        let activeStatusIndex = statusesOrder.indexOf(data.status.replace(' ', ''));
-        if (data.status === 'Closed') {
-            activeStatusIndex = 3;
-        }
-
-        // Populate times and status highlights
-        data.history.forEach(log => {
-            const stepName = log.status.replace(' ', '');
-            const element = document.getElementById(`step-${stepName}`);
-            
-            if (element) {
-                element.classList.add('completed');
-                const timeObj = new Date(log.timestamp);
-                document.getElementById(`time-${stepName}`).textContent = timeObj.toLocaleString();
-            }
-        });
-
-        // Set current active status
-        const activeElem = document.getElementById(`step-${data.status.replace(' ', '')}`);
-        if (activeElem) {
-            activeElem.classList.remove('completed');
-            activeElem.classList.add('active');
-        }
-        
-        showToast('Complaint Found', `Loaded timeline for ${data.complaint_id}`, 'info');
+        const foundTitle = window.t ? t('toast_complaint_found', 'Complaint Found') : 'Complaint Found';
+        const foundMsg = window.t ? t('toast_loaded_timeline', 'Loaded timeline for {id}', { id: data.complaint_id }) : `Loaded timeline for ${data.complaint_id}`;
+        showToast(foundTitle, foundMsg, 'info');
     })
     .catch(err => {
         showToast('Not Found', `Complaint ID ${id} was not found in city files.`, 'error');
@@ -1219,6 +1236,103 @@ function trackComplaint(id) {
 }
 
 // Load authority dashboard data
+
+// Render tracked complaint details with complete localization
+function renderTrackerDetails(data) {
+    if (!data) return;
+    cachedTrackData = data;
+    const trackerResult = document.getElementById('tracker-result');
+    if (!trackerResult) return;
+    trackerResult.classList.remove('hidden');
+    
+    document.getElementById('track-id').textContent = data.complaint_id;
+    document.getElementById('track-description').textContent = data.description;
+    
+    // Category Badge
+    const catBadge = document.getElementById('track-category');
+    if (catBadge) {
+        const catText = window.getCategoryTranslation ? getCategoryTranslation(data.category) : data.category;
+        catBadge.textContent = catText.toUpperCase();
+    }
+    
+    // Status Badge
+    const statusBadge = document.getElementById('track-status-badge');
+    if (statusBadge) {
+        statusBadge.textContent = window.getStatusTranslation ? getStatusTranslation(data.status) : data.status;
+        statusBadge.className = `badge-status badge-${data.status.replace(' ', '')}`;
+    }
+
+    // Priority
+    const prioritySpan = document.getElementById('track-priority');
+    if (prioritySpan) {
+        prioritySpan.textContent = window.getPriorityTranslation ? getPriorityTranslation(data.priority) : data.priority;
+        prioritySpan.className = `text-priority-${data.priority.toLowerCase()}`;
+    }
+
+    // Worker
+    const workerEl = document.getElementById('track-worker');
+    if (workerEl) {
+        workerEl.textContent = data.assigned_to_name || (window.t ? t('not_assigned_yet', 'Not Assigned Yet') : 'Not Assigned Yet');
+    }
+
+    // Image & Auto Description Analysis
+    const imgContainer = document.getElementById('track-image-container');
+    const analysisBox = document.getElementById('track-image-analysis-box');
+    const analysisText = document.getElementById('track-image-analysis-text');
+    
+    if (data.image_path) {
+        document.getElementById('track-image').src = `${API_BASE}${data.image_path}`;
+        imgContainer.classList.remove('hidden');
+        
+        if (data.image_analysis) {
+            analysisText.textContent = data.image_analysis;
+            analysisBox.classList.remove('hidden');
+        } else {
+            analysisBox.classList.add('hidden');
+        }
+    } else {
+        imgContainer.classList.add('hidden');
+    }
+
+    // Escalated flag banner
+    const escBanner = document.getElementById('track-escalation-banner');
+    if (data.escalation_flag) {
+        escBanner.classList.remove('hidden');
+    } else {
+        escBanner.classList.add('hidden');
+    }
+
+    // Reset all steps
+    document.querySelectorAll('.timeline-step').forEach(step => {
+        step.className = 'timeline-step';
+        const sName = step.id.replace('step-', '');
+        const tEl = document.getElementById(`time-${sName}`);
+        if (tEl) tEl.textContent = '-';
+    });
+
+    // Populate times and status highlights
+    if (data.history && Array.isArray(data.history)) {
+        data.history.forEach(log => {
+            const stepName = log.status.replace(' ', '');
+            const element = document.getElementById(`step-${stepName}`);
+            
+            if (element) {
+                element.classList.add('completed');
+                const timeStr = window.formatDate ? formatDate(log.timestamp) : new Date(log.timestamp).toLocaleString();
+                const tEl = document.getElementById(`time-${stepName}`);
+                if (tEl) tEl.textContent = timeStr;
+            }
+        });
+    }
+
+    // Set current active status
+    const activeElem = document.getElementById(`step-${data.status.replace(' ', '')}`);
+    if (activeElem) {
+        activeElem.classList.remove('completed');
+        activeElem.classList.add('active');
+    }
+}
+
 function loadDashboardData() {
     // 1. Stats Counter API
     let analyticsUrl = `${API_BASE}/api/analytics`;
@@ -1264,44 +1378,53 @@ function loadDashboardData() {
     .catch(err => console.error(err));
 }
 
-// Render complaints in table
+// Render complaints in table with complete localization
 function renderComplaintsTable(complaints) {
     const tbody = document.getElementById('complaints-table-body');
+    if (!tbody) return;
     tbody.innerHTML = '';
 
     if (complaints.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-table-message"><i class="fa-solid fa-folder-open"></i> No complaints match the active filters.</td></tr>';
+        const emptyMsg = window.t ? t('no_matching_complaints', 'No complaints match the active filters.') : 'No complaints match the active filters.';
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-table-message"><i class="fa-solid fa-folder-open"></i> ${emptyMsg}</td></tr>`;
         return;
     }
 
     complaints.forEach(c => {
         const row = document.createElement('tr');
         
-        const rDate = new Date(c.created_at);
-        const formattedDate = rDate.toLocaleDateString() + ' ' + rDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const formattedDate = window.formatDate ? formatDate(c.created_at) : new Date(c.created_at).toLocaleString();
 
         const prioClass = `badge-${c.priority.toLowerCase()}`;
         const statusClass = `badge-${c.status.replace(' ', '')}`;
 
-        let navigateHtml = `<button class="btn-action-assign" onclick="triggerNavigation(${c.latitude}, ${c.longitude}, '${c.complaint_id}')" style="background: var(--accent-indigo-glow); color: var(--accent-indigo);"><i class="fa-solid fa-location-arrow"></i> Navigate</button>`;
+        const catText = window.getCategoryTranslation ? getCategoryTranslation(c.category) : c.category.replace('_', ' ');
+        const prioText = window.getPriorityTranslation ? getPriorityTranslation(c.priority) : c.priority;
+        const statusText = window.getStatusTranslation ? getStatusTranslation(c.status) : c.status;
+        const navText = window.t ? t('navigate', 'Navigate') : 'Navigate';
+        const assignText = window.t ? t('assign', 'Assign') : 'Assign';
+        const closeText = window.t ? t('close', 'Close') : 'Close';
+        const unassignedText = window.t ? t('unassigned', 'Unassigned') : 'Unassigned';
+
+        let navigateHtml = `<button class="btn-action-assign" onclick="triggerNavigation(${c.latitude}, ${c.longitude}, '${c.complaint_id}')" style="background: var(--accent-indigo-glow); color: var(--accent-indigo);"><i class="fa-solid fa-location-arrow"></i> ${navText}</button>`;
 
         let actionHtml = '';
         if (c.status === 'Submitted') {
-            actionHtml = `<button class="btn-action-assign" onclick="openAssignmentModal('${c.complaint_id}')"><i class="fa-solid fa-user-plus"></i> Assign</button>`;
+            actionHtml = `<button class="btn-action-assign" onclick="openAssignmentModal('${c.complaint_id}')"><i class="fa-solid fa-user-plus"></i> ${assignText}</button>`;
         } else if (c.status === 'Resolved') {
-            actionHtml = `<button class="btn-action-close" onclick="closeComplaint('${c.complaint_id}')"><i class="fa-solid fa-lock"></i> Close</button>`;
+            actionHtml = `<button class="btn-action-close" onclick="closeComplaint('${c.complaint_id}')"><i class="fa-solid fa-lock"></i> ${closeText}</button>`;
         } else {
-            actionHtml = `<span class="text-muted"><i class="fa-solid fa-spinner fa-spin"></i> Dispatched</span>`;
+            actionHtml = `<span class="text-muted"><i class="fa-solid fa-spinner fa-spin"></i> ${statusText}</span>`;
         }
 
         row.innerHTML = `
             <td><strong>${c.complaint_id}</strong></td>
-            <td><span class="badge">${c.category.replace('_', ' ')}</span></td>
+            <td><span class="badge">${catText}</span></td>
             <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.description}</td>
-            <td><span class="badge ${prioClass}">${c.priority}</span></td>
-            <td><span class="badge ${statusClass}">${c.status}</span></td>
+            <td><span class="badge ${prioClass}">${prioText}</span></td>
+            <td><span class="badge ${statusClass}">${statusText}</span></td>
             <td>${formattedDate}</td>
-            <td>${c.assigned_to_name || '<i class="text-muted">Unassigned</i>'}</td>
+            <td>${c.assigned_to_name || `<i class="text-muted">${unassignedText}</i>`}</td>
             <td><div style="display: flex; gap: 6px; align-items: center;">${actionHtml}${navigateHtml}</div></td>
         `;
         tbody.appendChild(row);
@@ -1359,7 +1482,8 @@ window.openAssignmentModal = function(id) {
 
 // Directly close resolving task
 window.closeComplaint = function(id) {
-    if (!confirm(`Are you sure you want to officially CLOSE complaint ${id}?`)) return;
+    const confirmMsg = window.t ? t('confirm_close_complaint', `Are you sure you want to officially CLOSE complaint ${id}?`, { id }) : `Are you sure you want to officially CLOSE complaint ${id}?`;
+    if (!confirm(confirmMsg)) return;
 
     fetch(`${API_BASE}/api/complaints/${id}`, {
         method: 'PUT',
@@ -1374,15 +1498,22 @@ window.closeComplaint = function(id) {
     .catch(err => console.error(err));
 };
 
-// Renders Chart.js Analytics
+// Renders Chart.js Analytics with Localized Category Labels
 function renderCharts(categoriesData, wardsData) {
-    const ctxCat = document.getElementById('chart-categories').getContext('2d');
+    if (categoriesData) cachedCategoriesData = categoriesData;
+    if (!cachedCategoriesData) return;
+
+    const chartCanvas = document.getElementById('chart-categories');
+    if (!chartCanvas) return;
+    const ctxCat = chartCanvas.getContext('2d');
     if (categoriesChart) {
         categoriesChart.destroy();
     }
 
-    const catLabels = Object.keys(categoriesData).map(k => k.replace('_', ' ').toUpperCase());
-    const catVals = Object.values(categoriesData);
+    const catLabels = Object.keys(cachedCategoriesData).map(k => {
+        return window.getCategoryTranslation ? getCategoryTranslation(k).toUpperCase() : k.replace('_', ' ').toUpperCase();
+    });
+    const catVals = Object.values(cachedCategoriesData);
 
     categoriesChart = new Chart(ctxCat, {
         type: 'doughnut',
@@ -1390,8 +1521,8 @@ function renderCharts(categoriesData, wardsData) {
             labels: catLabels,
             datasets: [{
                 data: catVals,
-                backgroundColor: ['#6366f1', '#14b8a6', '#f59e0b', '#f43f5e', '#64748b'],
-                borderColor: 'rgba(30, 41, 59, 0.4)',
+                backgroundColor: ['#6366f1', '#14b8a6', '#f59e0b', '#f43f5e', '#10b981', '#8b5cf6'],
+                borderColor: document.body.classList.contains('light-theme') ? '#ffffff' : '#0f172a',
                 borderWidth: 2
             }]
         },
@@ -1401,13 +1532,18 @@ function renderCharts(categoriesData, wardsData) {
             plugins: {
                 legend: {
                     position: 'right',
-                    labels: { color: document.body.classList.contains('light-theme') ? '#0f172a' : '#f8fafc', font: { family: 'Inter' } }
+                    labels: { 
+                        color: document.body.classList.contains('light-theme') ? '#0f172a' : '#f8fafc',
+                        font: { 
+                            family: 'Outfit, Inter, Noto Sans Kannada, Noto Sans Devanagari, Noto Sans Telugu, sans-serif',
+                            size: 12,
+                            weight: '600'
+                        }
+                    }
                 }
             }
         }
     });
-
-    // Wards density bar chart removed
 }
 
 // WORKER MODULE INTERACTION
@@ -1425,13 +1561,20 @@ function loadWorkerTasks() {
 }
 
 function renderWorkerJobsList(tasks) {
+    activeWorkerTasks = tasks;
     const list = document.getElementById('worker-jobs-list');
+    if (!list) return;
     list.innerHTML = '';
 
     if (tasks.length === 0) {
-        list.innerHTML = '<p class="empty-jobs-message"><i class="fa-solid fa-circle-check text-accent-emerald"></i> You have no assigned tasks in your queue!</p>';
+        const emptyMsg = window.t ? t('no_worker_tasks', 'You have no assigned tasks in your queue!') : 'You have no assigned tasks in your queue!';
+        list.innerHTML = `<p class="empty-jobs-message"><i class="fa-solid fa-circle-check text-accent-emerald"></i> ${emptyMsg}</p>`;
         return;
     }
+
+    const catLabel = window.t ? t('category', 'Category') : 'Category';
+    const assignedLabel = window.t ? t('assigned_date_label', 'Assigned:') : 'Assigned:';
+    const navText = window.t ? t('navigate', 'Navigate') : 'Navigate';
 
     tasks.forEach(task => {
         const card = document.createElement('div');
@@ -1440,24 +1583,28 @@ function renderWorkerJobsList(tasks) {
             card.classList.add('active-job');
         }
 
-        const formattedDate = new Date(task.created_at).toLocaleDateString();
+        const formattedDate = window.formatDate ? formatDate(task.created_at, { dateStyle: 'medium' }) : new Date(task.created_at).toLocaleDateString();
         const statusClass = `badge-${task.status.replace(' ', '')}`;
+
+        const catText = window.getCategoryTranslation ? getCategoryTranslation(task.category) : task.category;
+        const prioText = window.getPriorityTranslation ? getPriorityTranslation(task.priority) : task.priority;
+        const statusText = window.getStatusTranslation ? getStatusTranslation(task.status) : task.status;
 
         card.innerHTML = `
             <div class="job-card-header">
                 <h4>${task.complaint_id}</h4>
                 <div style="display: flex; gap: 4px;">
-                    <span class="badge badge-${task.priority.toLowerCase()}">${task.priority}</span>
-                    <span class="badge ${statusClass}">${task.status}</span>
+                    <span class="badge badge-${task.priority.toLowerCase()}">${prioText}</span>
+                    <span class="badge ${statusClass}">${statusText}</span>
                 </div>
             </div>
             <div class="job-card-desc">${task.description}</div>
             <div class="job-card-footer" style="margin-bottom: 8px;">
-                <span>Category: <strong>${task.category}</strong></span>
-                <span>Assigned: ${formattedDate}</span>
+                <span>${catLabel}: <strong>${catText}</strong></span>
+                <span>${assignedLabel} ${formattedDate}</span>
             </div>
             <button class="btn-submit-blue btn-navigate-task" onclick="event.stopPropagation(); triggerNavigation(${task.latitude}, ${task.longitude}, '${task.complaint_id}')" style="margin-top: 4px; padding: 6px 12px; font-size: 0.8rem; width: 100%; border-radius: 8px;">
-                <i class="fa-solid fa-location-arrow"></i> Navigate
+                <i class="fa-solid fa-location-arrow"></i> ${navText}
             </button>
         `;
 
@@ -1476,7 +1623,10 @@ function openWorkerTaskMap(task) {
     activeWorkerTask = task;
     document.getElementById('worker-work-area').classList.remove('hidden');
     document.getElementById('work-active-id').textContent = task.complaint_id;
-    document.getElementById('work-active-category').textContent = task.category.replace('_', ' ').toUpperCase() + ' TASK';
+    
+    const catName = window.getCategoryTranslation ? getCategoryTranslation(task.category).toUpperCase() : task.category.replace('_', ' ').toUpperCase();
+    const taskSuffix = window.t ? t('task_suffix', 'TASK') : 'TASK';
+    document.getElementById('work-active-category').textContent = `${catName} ${taskSuffix}`;
 
     const btnInProg = document.getElementById('btn-toggle-in-progress');
     const btnResolve = document.getElementById('btn-open-resolve-modal');
@@ -1485,24 +1635,30 @@ function openWorkerTaskMap(task) {
     btnInProg.classList.remove('btn-emerald-submit');
     btnResolve.classList.remove('btn-emerald-submit');
 
+    const activeSiteText = window.t ? t('active_on_site', 'Active on Site') : 'Active on Site';
+    const completedText = window.t ? t('completed', 'Completed') : 'Completed';
+    const markInProgText = window.t ? t('btn_mark_in_progress', 'Mark "In Progress"') : 'Mark "In Progress"';
+    const resolveTaskText = window.t ? t('btn_resolve_task', 'Resolve Task') : 'Resolve Task';
+    const resolvedStatusText = window.getStatusTranslation ? getStatusTranslation('Resolved') : 'Resolved';
+
     if (task.status === 'In Progress') {
-        btnInProg.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Active on Site';
+        btnInProg.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${activeSiteText}`;
         btnInProg.classList.add('btn-emerald-submit');
         btnInProg.disabled = true;
         btnResolve.disabled = false;
-        btnResolve.innerHTML = 'Resolve Task';
+        btnResolve.innerHTML = resolveTaskText;
     } else if (task.status === 'Resolved' || task.status === 'Closed') {
-        btnInProg.innerHTML = 'Completed';
+        btnInProg.innerHTML = completedText;
         btnInProg.classList.add('btn-emerald-submit');
         btnInProg.disabled = true;
-        btnResolve.innerHTML = '<i class="fa-solid fa-circle-check"></i> Resolved';
+        btnResolve.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${resolvedStatusText}`;
         btnResolve.classList.add('btn-emerald-submit');
         btnResolve.disabled = true;
     } else {
-        btnInProg.innerHTML = 'Mark "In Progress"';
+        btnInProg.innerHTML = markInProgText;
         btnInProg.disabled = false;
-        btnResolve.disabled = true; // Cannot resolve until in progress!
-        btnResolve.innerHTML = 'Resolve Task';
+        btnResolve.disabled = true;
+        btnResolve.innerHTML = resolveTaskText;
     }
 
     const logGroup = document.getElementById('worker-log-input-group');
@@ -1573,14 +1729,18 @@ function openWorkerTaskMap(task) {
     showToast('Route Loaded', 'Calculated optimized ward dispatch route.', 'info');
 }
 
-// Toast Notifications Helper
+// Toast Notifications Helper with Multilingual Support
 function showToast(title, message, type = 'info') {
     const toast = document.getElementById('notification-toast');
     const toastTitle = document.getElementById('toast-title');
     const toastMsg = document.getElementById('toast-message');
 
-    toastTitle.textContent = title;
-    toastMsg.textContent = message;
+    // Auto-translate using dictionary if matching key exists
+    const translatedTitle = window.t ? t(title, title) : title;
+    const translatedMsg = window.t ? t(message, message) : message;
+
+    toastTitle.textContent = translatedTitle;
+    toastMsg.innerHTML = translatedMsg;
 
     if (type === 'success') {
         toast.style.borderLeftColor = 'var(--accent-emerald)';
@@ -1631,28 +1791,36 @@ function loadJournalistData() {
 }
 
 function renderRedirectedList(complaints) {
+    activeRedirectedComplaints = complaints;
     const listContainer = document.getElementById('journalist-redirect-list');
+    if (!listContainer) return;
     listContainer.innerHTML = '';
 
     if (complaints.length === 0) {
-        listContainer.innerHTML = '<p class="empty-list-message"><i class="fa-solid fa-face-smile"></i> No complaints currently redirected to press feed.</p>';
+        const emptyMsg = window.t ? t('no_redirected', 'No complaints currently redirected to press feed.') : 'No complaints currently redirected to press feed.';
+        listContainer.innerHTML = `<p class="empty-list-message"><i class="fa-solid fa-face-smile"></i> ${emptyMsg}</p>`;
         return;
     }
 
+    const catLabel = window.t ? t('category', 'Category') : 'Category';
+    const inspectBtnText = window.t ? t('inspect_and_write', 'Inspect & Write') : 'Inspect & Write';
+
     complaints.forEach(c => {
         const card = document.createElement('div');
-        card.className = 'job-card'; // Reuse worker card styling since it looks great
-        
+        card.className = 'job-card';
+        const catText = window.getCategoryTranslation ? getCategoryTranslation(c.category).toUpperCase() : c.category.toUpperCase();
+        const prioText = window.getPriorityTranslation ? getPriorityTranslation(c.priority) : c.priority;
+
         card.innerHTML = `
             <div class="job-card-header">
                 <h4>${c.complaint_id}</h4>
-                <span class="badge badge-${c.priority.toLowerCase()}">${c.priority}</span>
+                <span class="badge badge-${c.priority.toLowerCase()}">${prioText}</span>
             </div>
             <div class="job-card-desc">${c.description}</div>
             <div style="margin-top: 10px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:0.75rem; color:var(--text-muted);">Category: <strong>${c.category.toUpperCase()}</strong></span>
+                <span style="font-size:0.75rem; color:var(--text-muted);">${catLabel}: <strong>${catText}</strong></span>
                 <button class="btn-action-assign" onclick="inspectRedirectedComplaint('${c.complaint_id}')" style="padding: 6px 12px; font-size:0.8rem;">
-                    <i class="fa-solid fa-magnifying-glass"></i> Inspect & Write
+                    <i class="fa-solid fa-magnifying-glass"></i> ${inspectBtnText}
                 </button>
             </div>
         `;
@@ -1679,12 +1847,20 @@ window.inspectRedirectedComplaint = function(compId) {
     const summary = document.getElementById('station-complaint-summary');
     const formattedDate = new Date(complaint.created_at).toLocaleString();
     
+    const catText = window.getCategoryTranslation ? getCategoryTranslation(complaint.category).toUpperCase() : complaint.category.toUpperCase();
+    const prioText = window.getPriorityTranslation ? getPriorityTranslation(complaint.priority) : complaint.priority;
+    const descLabel = window.t ? t('description', 'Description') : 'Description';
+    const repLabel = window.t ? t('reported_at_label', 'Reported At:') : 'Reported At:';
+    const prioLabel = window.t ? t('priority', 'Priority') : 'Priority';
+    const gpsLabel = window.t ? t('gps_location_label', 'GPS Location:') : 'GPS Location:';
+    const formattedDateStr = window.formatDate ? formatDate(complaint.created_at) : new Date(complaint.created_at).toLocaleString();
+
     summary.innerHTML = `
-        <h4>${complaint.complaint_id} (${complaint.category.toUpperCase()})</h4>
-        <p><strong>Description:</strong> ${complaint.description}</p>
-        <p><strong>Reported At:</strong> ${formattedDate}</p>
-        <p><strong>Priority:</strong> <span class="badge badge-${complaint.priority.toLowerCase()}">${complaint.priority}</span></p>
-        <p><strong>GPS Location:</strong> ${complaint.latitude.toFixed(5)}, ${complaint.longitude.toFixed(5)}</p>
+        <h4>${complaint.complaint_id} (${catText})</h4>
+        <p><strong>${descLabel}:</strong> ${complaint.description}</p>
+        <p><strong>${repLabel}</strong> ${formattedDateStr}</p>
+        <p><strong>${prioLabel}:</strong> <span class="badge badge-${complaint.priority.toLowerCase()}">${prioText}</span></p>
+        <p><strong>${gpsLabel}</strong> ${complaint.latitude.toFixed(5)}, ${complaint.longitude.toFixed(5)}</p>
     `;
 
     document.getElementById('report-hidden-complaint-id').value = compId;
@@ -1790,13 +1966,22 @@ function submitJournalistReport(publishState) {
 }
 
 function renderPublishedFeed(reports) {
+    publishedArticlesList = reports;
     const feed = document.getElementById('published-articles-feed');
+    if (!feed) return;
     feed.innerHTML = '';
 
     if (reports.length === 0) {
-        feed.innerHTML = '<p class="empty-list-message">No articles published to press feeds yet.</p>';
+        const emptyMsg = window.t ? t('no_published_reports', 'No articles published to press feeds yet.') : 'No articles published to press feeds yet.';
+        feed.innerHTML = `<p class="empty-list-message">${emptyMsg}</p>`;
         return;
     }
+
+    const issueLabel = window.t ? t('issue_id_label', 'Issue ID:') : 'Issue ID:';
+    const dateLabel = window.t ? t('date_label', 'Date:') : 'Date:';
+    const publishedBadge = window.t ? t('badge_published', 'PUBLISHED') : 'PUBLISHED';
+    const draftBadge = window.t ? t('badge_draft', 'DRAFT') : 'DRAFT';
+    const publishBtnText = window.t ? t('publish_action', 'Publish') : 'Publish';
 
     reports.forEach(r => {
         const card = document.createElement('div');
@@ -1805,19 +1990,19 @@ function renderPublishedFeed(reports) {
             card.classList.add('draft');
         }
 
-        const dateStr = new Date(r.created_at).toLocaleDateString();
-        const badgeState = r.published ? '<span class="badge badge-resolved">PUBLISHED</span>' : '<span class="badge badge-low">DRAFT</span>';
+        const dateStr = window.formatDate ? formatDate(r.created_at, { dateStyle: 'medium' }) : new Date(r.created_at).toLocaleDateString();
+        const badgeState = r.published ? `<span class="badge badge-resolved">${publishedBadge}</span>` : `<span class="badge badge-low">${draftBadge}</span>`;
 
         card.innerHTML = `
             <div class="article-meta-row">
-                <span>Issue ID: <strong>${r.complaint_id}</strong></span>
-                <span>Date: ${dateStr}</span>
+                <span>${issueLabel} <strong>${r.complaint_id}</strong></span>
+                <span>${dateLabel} ${dateStr}</span>
             </div>
             <h3>${r.title}</h3>
             <div class="article-body-preview">${r.content}</div>
             <div class="article-actions">
                 ${badgeState}
-                ${!r.published ? `<button class="btn-action-assign" onclick="publishReportFromFeed(${r.id})" style="padding: 4px 8px; font-size: 0.72rem;"><i class="fa-solid fa-paper-plane"></i> Publish</button>` : ''}
+                ${!r.published ? `<button class="btn-action-assign" onclick="publishReportFromFeed(${r.id})" style="padding: 6px 12px; font-size: 0.85rem; font-weight: 700;"><i class="fa-solid fa-paper-plane"></i> ${publishBtnText}</button>` : ''}
             </div>
         `;
         feed.appendChild(card);
@@ -1922,58 +2107,66 @@ window.triggerNavigation = function(destLat, destLng, complaintId) {
 };
 
 function generateTurnByTurnDirections(startLat, startLng, destLat, destLng, complaintId) {
+    currentNavData = { startLat, startLng, destLat, destLng, complaintId };
     const list = document.getElementById('navigation-steps-list');
+    if (!list) return;
     list.innerHTML = '';
 
     const latDelta = destLat - startLat;
     const lngDelta = destLng - startLng;
 
+    const northKm = (latDelta * 111).toFixed(1);
+    const southKm = (Math.abs(latDelta) * 111).toFixed(1);
+    const eastKm = (lngDelta * 111).toFixed(1);
+    const westKm = (Math.abs(lngDelta) * 111).toFixed(1);
+
     const steps = [];
     steps.push({
         icon: 'fa-location-dot',
-        text: 'Depart from your current location.'
+        text: window.t ? t('nav_depart', 'Depart from your current location.') : 'Depart from your current location.'
     });
 
     if (latDelta > 0) {
         steps.push({
             icon: 'fa-arrow-up',
-            text: `Head north on municipal corridor for ${(latDelta * 111).toFixed(1)} km.`
+            text: window.t ? t('nav_head_north', 'Head north on municipal corridor for {km} km.', { km: northKm }) : `Head north on municipal corridor for ${northKm} km.`
         });
     } else {
         steps.push({
             icon: 'fa-arrow-down',
-            text: `Head south on municipal corridor for ${(Math.abs(latDelta) * 111).toFixed(1)} km.`
+            text: window.t ? t('nav_head_south', 'Head south on municipal corridor for {km} km.', { km: southKm }) : `Head south on municipal corridor for ${southKm} km.`
         });
     }
 
     if (lngDelta > 0) {
         steps.push({
             icon: 'fa-arrow-right',
-            text: `Turn right at main intersection, proceed east for ${(lngDelta * 111).toFixed(1)} km.`
+            text: window.t ? t('nav_turn_right', 'Turn right at main intersection, proceed east for {km} km.', { km: eastKm }) : `Turn right at main intersection, proceed east for ${eastKm} km.`
         });
     } else {
         steps.push({
             icon: 'fa-arrow-left',
-            text: `Turn left at main intersection, proceed west for ${(Math.abs(lngDelta) * 111).toFixed(1)} km.`
+            text: window.t ? t('nav_turn_left', 'Turn left at main intersection, proceed west for {km} km.', { km: westKm }) : `Turn left at main intersection, proceed west for ${westKm} km.`
         });
     }
 
     steps.push({
         icon: 'fa-circle-check',
-        text: `Arrive at complaint site <strong>${complaintId}</strong> on the right.`
+        text: window.t ? t('nav_arrive', 'Arrive at complaint site {id} on the right.', { id: `<strong>${complaintId}</strong>` }) : `Arrive at complaint site <strong>${complaintId}</strong> on the right.`
     });
 
+    const stepLabel = window.t ? t('nav_step', 'Step') : 'Step';
     steps.forEach((step, idx) => {
         const item = document.createElement('div');
         item.style.display = 'flex';
         item.style.gap = '12px';
         item.style.alignItems = 'flex-start';
         item.innerHTML = `
-            <div style="background: rgba(99, 102, 241, 0.1); color: var(--accent-indigo); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; flex-shrink: 0;">
+            <div style="background: var(--accent-indigo-glow); color: var(--accent-indigo); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; flex-shrink: 0;">
                 <i class="fa-solid ${step.icon}"></i>
             </div>
             <div>
-                <span style="font-weight: 700; display: block; margin-bottom: 2px;">Step ${idx + 1}</span>
+                <span style="font-weight: 700; display: block; margin-bottom: 2px;">${stepLabel} ${idx + 1}</span>
                 <span>${step.text}</span>
             </div>
         `;
@@ -1998,30 +2191,41 @@ function renderCitizenComplaintsList(complaints) {
 
     list.innerHTML = '';
     if (complaints.length === 0) {
-        list.innerHTML = '<p class="empty-list-message">No reported city issues found.</p>';
+        const emptyMsg = window.t ? t('no_complaints_found', 'No reported city issues found.') : 'No reported city issues found.';
+        list.innerHTML = `<p class="empty-list-message">${emptyMsg}</p>`;
         return;
     }
 
+    const catLabel = window.t ? t('category', 'Category') : 'Category';
+    const statusLabel = window.t ? t('status', 'Status') : 'Status';
+    const workerLabel = window.t ? t('assigned_worker', 'Worker') : 'Worker';
+    const notAssignedText = window.t ? t('not_assigned_yet', 'Not Assigned Yet') : 'Not Assigned Yet';
+    const viewTimelineText = window.t ? t('view_live_timeline', 'View Live Timeline') : 'View Live Timeline';
+
     complaints.forEach(c => {
         const card = document.createElement('div');
-        card.className = 'job-card'; // Reuse styled job-card from CSS
+        card.className = 'job-card';
         
         const prioClass = `badge-${c.priority.toLowerCase()}`;
         const statusClass = `badge-${c.status.replace(' ', '')}`;
 
+        const catText = window.getCategoryTranslation ? getCategoryTranslation(c.category) : c.category;
+        const prioText = window.getPriorityTranslation ? getPriorityTranslation(c.priority) : c.priority;
+        const statusText = window.getStatusTranslation ? getStatusTranslation(c.status) : c.status;
+
         card.innerHTML = `
             <div class="job-card-header">
                 <h4>${c.complaint_id}</h4>
-                <span class="badge ${prioClass}">${c.priority}</span>
+                <span class="badge ${prioClass}">${prioText}</span>
             </div>
             <div class="job-card-desc">${c.description}</div>
             <div class="job-card-footer" style="margin-bottom: 8px; flex-direction: column; align-items: flex-start; gap: 4px;">
-                <span>Category: <strong>${c.category.replace('_', ' ').toUpperCase()}</strong></span>
-                <span>Status: <span class="badge ${statusClass}" style="margin: 0; font-size: 0.7rem; padding: 2px 6px;">${c.status}</span></span>
-                <span>Worker: <strong>${c.assigned_to_name || 'Not Assigned Yet'}</strong></span>
+                <span>${catLabel}: <strong>${catText.toUpperCase()}</strong></span>
+                <span>${statusLabel}: <span class="badge ${statusClass}" style="margin: 0; font-size: 0.8rem; padding: 3px 8px;">${statusText}</span></span>
+                <span>${workerLabel}: <strong>${c.assigned_to_name || notAssignedText}</strong></span>
             </div>
-            <button class="btn-submit-blue" onclick="trackComplaint('${c.complaint_id}')" style="margin-top: 4px; padding: 6px 12px; font-size: 0.8rem; width: 100%; border-radius: 8px;">
-                <i class="fa-solid fa-clock-rotate-left"></i> View Live Timeline
+            <button class="btn-submit-blue" onclick="trackComplaint('${c.complaint_id}')" style="margin-top: 6px; padding: 10px 14px; font-size: 0.88rem; font-weight: 700; width: 100%; border-radius: 8px;">
+                <i class="fa-solid fa-clock-rotate-left"></i> ${viewTimelineText}
             </button>
         `;
         list.appendChild(card);

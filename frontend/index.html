@@ -8,7 +8,7 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+Kannada:wght@400;500;600;700&family=Noto+Sans+Telugu:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -44,25 +44,38 @@
                 <div class="logo-icon"><i class="fa-solid fa-city"></i></div>
                 <div class="logo-text">
                     <h1>SmartCivic <span>AI</span></h1>
-                    <p>City Issue Reporting & Dispatch System</p>
+                    <p data-i18n="brand_subtitle">City Issue Reporting & Dispatch System</p>
                 </div>
             </div>
             
             <!-- Navbar Nav -->
             <nav class="nav-links">
-                <button class="nav-btn active" data-tab="citizen-portal" id="btn-citizen"><i class="fa-solid fa-users"></i> Citizen Portal</button>
-                <button class="nav-btn" data-tab="authority-dashboard" id="btn-authority"><i class="fa-solid fa-shield-halved"></i> Authority Dashboard</button>
-                <button class="nav-btn" data-tab="worker-module" id="btn-worker"><i class="fa-solid fa-helmet-safety"></i> Worker Module</button>
-                <button class="nav-btn" data-tab="journalist-dashboard" id="btn-journalist"><i class="fa-solid fa-newspaper"></i> Journalist Dashboard</button>
+                <button class="nav-btn active" data-tab="citizen-portal" id="btn-citizen"><i class="fa-solid fa-users"></i> <span data-i18n="tab_citizen">Citizen Portal</span></button>
+                <button class="nav-btn" data-tab="authority-dashboard" id="btn-authority"><i class="fa-solid fa-shield-halved"></i> <span data-i18n="tab_authority">Authority Dashboard</span></button>
+                <button class="nav-btn" data-tab="worker-module" id="btn-worker"><i class="fa-solid fa-helmet-safety"></i> <span data-i18n="tab_worker">Worker Module</span></button>
+                <button class="nav-btn" data-tab="journalist-dashboard" id="btn-journalist"><i class="fa-solid fa-newspaper"></i> <span data-i18n="tab_journalist">Journalist Dashboard</span></button>
             </nav>
 
-            <!-- User Profile Banner -->
+            <!-- User Profile Banner & Header Controls -->
             <div class="header-controls">
-                <div class="user-status-wrapper hidden" id="user-profile-banner">
-                    <span class="user-status-text"><i class="fa-solid fa-user-circle text-accent-indigo"></i> <strong id="lbl-user-name">Guest</strong> (<span id="lbl-user-role">citizen</span>)</span>
-                    <button class="btn-logout" id="btn-logout-session"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+                <!-- Header Luxury Language Switcher Pill -->
+                <div class="header-lang-wrapper" id="header-lang-wrapper">
+                    <div class="lang-selector-pill" role="group" aria-label="Language Selector">
+                        <i class="fa-solid fa-globe lang-globe-icon" data-i18n-title="select_language" title="Language Selector"></i>
+                        <div class="lang-btn-group">
+                            <button type="button" class="btn-lang active" data-lang="en" title="English"><span class="lang-tag">EN</span> English</button>
+                            <button type="button" class="btn-lang" data-lang="kn" title="ಕನ್ನಡ (Kannada)"><span class="lang-tag">KN</span> ಕನ್ನಡ</button>
+                            <button type="button" class="btn-lang" data-lang="hi" title="हिंदी (Hindi)"><span class="lang-tag">HI</span> हिंदी</button>
+                            <button type="button" class="btn-lang" data-lang="te" title="తెలుగు (Telugu)"><span class="lang-tag">TE</span> తెలుగు</button>
+                        </div>
+                    </div>
                 </div>
-                <button class="btn-login-header" id="btn-login-trigger"><i class="fa-solid fa-right-to-bracket"></i> Login / Register</button>
+
+                <div class="user-status-wrapper hidden" id="user-profile-banner">
+                    <span class="user-status-text"><i class="fa-solid fa-user-circle text-accent-indigo"></i> <strong id="lbl-user-name" data-i18n="guest">Guest</strong> (<span id="lbl-user-role">citizen</span>)</span>
+                    <button class="btn-logout" id="btn-logout-session"><i class="fa-solid fa-right-from-bracket"></i> <span data-i18n="logout">Logout</span></button>
+                </div>
+                <button class="btn-login-header" id="btn-login-trigger"><i class="fa-solid fa-right-to-bracket"></i> <span data-i18n="login_register">Login / Register</span></button>
             </div>
         </header>
 
@@ -75,78 +88,78 @@
                     
                     <!-- Left: Report Form -->
                     <div class="glass-card citizen-form-card">
-                        <h2><i class="fa-solid fa-pen-to-square text-accent-teal"></i> Report a Civic Issue</h2>
-                        <p class="section-subtitle">File a complaint. AI automatically classifies and routes it.</p>
+                        <h2><i class="fa-solid fa-pen-to-square text-accent-teal"></i> <span data-i18n="report_issue_title">Report a Civic Issue</span></h2>
+                        <p class="section-subtitle" data-i18n="report_issue_subtitle">File a complaint. AI automatically classifies and routes it.</p>
 
 
                         
                         <form id="report-form" enctype="multipart/form-data">
                             <div class="form-group">
-                                <label for="form-category-preset"><i class="fa-solid fa-list-check"></i> Select Issue Category / Type</label>
+                                <label for="form-category-preset"><i class="fa-solid fa-list-check"></i> <span data-i18n="select_category_label">Select Issue Category / Type</span></label>
                                 <select id="form-category-preset" class="form-select-category">
-                                    <option value="">-- Select Issue Category (Or Type Custom Details Below) --</option>
-                                    <option value="Pothole">Pothole</option>
-                                    <option value="Drainage">Drainage</option>
-                                    <option value="Garbage">Garbage</option>
-                                    <option value="Street Light">Street Light</option>
-                                    <option value="Footpath">Footpath</option>
-                                    <option value="Manhole">Manhole</option>
+                                    <option value="" data-i18n="select_category_default">-- Select Issue Category (Or Type Custom Details Below) --</option>
+                                    <option value="Pothole" data-i18n="cat_pothole">Pothole</option>
+                                    <option value="Drainage" data-i18n="cat_drainage">Drainage</option>
+                                    <option value="Garbage" data-i18n="cat_garbage">Garbage</option>
+                                    <option value="Street Light" data-i18n="cat_streetlight">Street Light</option>
+                                    <option value="Footpath" data-i18n="cat_footpath">Footpath</option>
+                                    <option value="Manhole" data-i18n="cat_manhole">Manhole</option>
                                 </select>
                             </div>
 
                             <div class="form-group">
-                                <label for="form-description">Description of Issue</label>
-                                <textarea id="form-description" placeholder="Select from dropdown above or describe what is wrong (e.g. 'Huge pothole near metro pillar 15 causing traffic backlog', 'Smelly garbage pile overflowing on the main road')" required></textarea>
+                                <label for="form-description" data-i18n="description_label">Description of Issue</label>
+                                <textarea id="form-description" data-i18n-placeholder="description_placeholder" placeholder="Select from dropdown above or describe what is wrong (e.g. 'Huge pothole near metro pillar 15 causing traffic backlog', 'Smelly garbage pile overflowing on the main road')" required></textarea>
                             </div>
                             
                             <div class="form-group">
-                                <label for="form-contact">Your Contact Number</label>
-                                <input type="tel" id="form-contact" placeholder="e.g. +1 555-0199" required>
+                                <label for="form-contact" data-i18n="contact_label">Your Contact Number</label>
+                                <input type="tel" id="form-contact" data-i18n-placeholder="contact_placeholder" placeholder="e.g. +91 9876543210" required>
                             </div>
                             
                             <div class="form-group">
-                                <label for="form-gmail"><i class="fa-solid fa-envelope"></i> Your Gmail / Email Address (For Live Notifications & Tracking Link)</label>
-                                <input type="email" id="form-gmail" placeholder="e.g. citizen@gmail.com" required>
+                                <label for="form-gmail"><i class="fa-solid fa-envelope"></i> <span data-i18n="gmail_label">Your Gmail / Email Address (For Live Notifications & Tracking Link)</span></label>
+                                <input type="email" id="form-gmail" data-i18n-placeholder="gmail_placeholder" placeholder="e.g. citizen@gmail.com" required>
                             </div>
                             
                             <!-- Location Section -->
                             <div class="form-group">
                                 <div class="label-row">
-                                    <label>Issue Geolocation</label>
-                                    <button type="button" class="btn-small" id="btn-gps-detect"><i class="fa-solid fa-location-crosshairs"></i> Get Current GPS</button>
+                                    <label data-i18n="geolocation_label">Issue Geolocation</label>
+                                    <button type="button" class="btn-small" id="btn-gps-detect"><i class="fa-solid fa-location-crosshairs"></i> <span data-i18n="get_current_gps">Get Current GPS</span></button>
                                 </div>
 
                                 <div class="gps-coords" style="flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 6px;">
                                     <div style="display: flex; gap: 16px;">
-                                        <span>Lat: <strong id="val-latitude">12.971598</strong></span>
-                                        <span>Lng: <strong id="val-longitude">77.594562</strong></span>
+                                        <span><span data-i18n="lat_label">Lat:</span> <strong id="val-latitude">12.971598</strong></span>
+                                        <span><span data-i18n="lng_label">Lng:</span> <strong id="val-longitude">77.594562</strong></span>
                                     </div>
                                     <div style="font-size: 0.78rem; color: var(--accent-teal); margin-top: 2px;">
-                                        <i class="fa-solid fa-map-pin"></i> <span id="lbl-address-string">Detecting exact location address...</span>
+                                        <i class="fa-solid fa-map-pin"></i> <span id="lbl-address-string" data-i18n="detecting_address">Detecting exact location address...</span>
                                     </div>
                                 </div>
                                 <div class="map-picker-container">
                                     <div id="map-picker"></div>
-                                    <span class="map-helper-text"><i class="fa-solid fa-circle-info"></i> Click on "Get Current GPS" to auto-detect location, or tap/drag the map pin to select location.</span>
+                                    <span class="map-helper-text"><i class="fa-solid fa-circle-info"></i> <span data-i18n="map_helper_text">Click on "Get Current GPS" to auto-detect location, or tap/drag the map pin to select location.</span></span>
                                 </div>
                             </div>
                             
                             <!-- Image Section -->
                             <div class="form-group">
-                                <label>Upload Proof Image (For AI Similarity & Duplicate Check)</label>
+                                <label data-i18n="upload_proof_label">Upload Proof Image (For AI Similarity & Duplicate Check)</label>
                                 <div class="file-drop-area">
                                     <i class="fa-solid fa-cloud-arrow-up"></i>
-                                    <span>Choose a photo or drag it here</span>
+                                    <span data-i18n="choose_photo_drag">Choose a photo or drag it here</span>
                                     <input type="file" id="form-image" accept="image/*">
                                 </div>
                                 <div id="image-preview-container" class="hidden">
                                     <img id="image-preview" src="" alt="Selected proof">
-                                    <button type="button" id="btn-remove-image"><i class="fa-solid fa-times"></i> Remove</button>
+                                    <button type="button" id="btn-remove-image"><i class="fa-solid fa-times"></i> <span data-i18n="remove">Remove</span></button>
                                 </div>
                             </div>
 
                             <button type="submit" class="btn-submit" id="btn-submit-complaint">
-                                <span class="btn-text">Submit Complaint</span>
+                                <span class="btn-text" data-i18n="submit_complaint">Submit Complaint</span>
                                 <span class="spinner hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
                             </button>
                         </form>
@@ -158,21 +171,21 @@
                         <div id="duplicate-warning" class="glass-card duplicate-card hidden">
                             <div class="dup-header">
                                 <i class="fa-solid fa-triangle-exclamation"></i>
-                                <h3>AI Duplicate Warning</h3>
+                                <h3 data-i18n="duplicate_warning_title">AI Duplicate Warning</h3>
                             </div>
-                            <p>Our AI model identified an existing open complaint within 50 meters containing similar details. The issue has been linked, and its priority was verified.</p>
+                            <p data-i18n="duplicate_warning_text">Our AI model identified an existing open complaint within 50 meters containing similar details. The issue has been linked, and its priority was verified.</p>
                             <div class="dup-details">
-                                <span>Linked ID: <strong id="dup-linked-id">COMP-XXXX</strong></span>
-                                <button type="button" class="btn-small" id="btn-view-duplicate">Track Linked Complaint</button>
+                                <span><span data-i18n="linked_id">Linked ID:</span> <strong id="dup-linked-id">COMP-XXXX</strong></span>
+                                <button type="button" class="btn-small" id="btn-view-duplicate" data-i18n="track_linked_complaint">Track Linked Complaint</button>
                             </div>
                         </div>
 
                         <!-- Search Box -->
                         <div class="glass-card search-card">
-                            <h2><i class="fa-solid fa-magnifying-glass text-accent-indigo"></i> Track Complaint Status</h2>
-                            <p class="section-subtitle">Enter your complaint tracking ID to see the live timeline.</p>
+                            <h2><i class="fa-solid fa-magnifying-glass text-accent-indigo"></i> <span data-i18n="track_status_title">Track Complaint Status</span></h2>
+                            <p class="section-subtitle" data-i18n="track_status_subtitle">Enter your complaint tracking ID to see the live timeline.</p>
                             <div class="search-box">
-                                <input type="text" id="search-complaint-id" placeholder="e.g. COMP-A4F9E3">
+                                <input type="text" id="search-complaint-id" data-i18n-placeholder="search_placeholder" placeholder="e.g. COMP-A4F9E3">
                                 <button type="button" id="btn-search-track"><i class="fa-solid fa-arrow-right"></i></button>
                             </div>
                         </div>
@@ -189,26 +202,26 @@
                             
                             <div class="escalation-alert-banner hidden" id="track-escalation-banner">
                                 <i class="fa-solid fa-triangle-exclamation fa-beat"></i>
-                                <span><strong>ESCALATED:</strong> Unresolved for > 48 hours. Routed to Supervisor.</span>
+                                <span><span data-i18n="escalated_banner"><strong>ESCALATED:</strong> Unresolved for > 48 hours. Routed to Supervisor.</span></span>
                             </div>
 
                             <div class="tracker-desc">
-                                <strong>Description:</strong>
+                                <strong data-i18n="description">Description:</strong>
                                 <p id="track-description">...</p>
                             </div>
 
                             <div class="tracker-image-box hidden" id="track-image-container">
-                                <strong>Attached Proof:</strong>
+                                <strong data-i18n="attached_proof">Attached Proof:</strong>
                                 <img id="track-image" src="" alt="Proof Image">
                                 <div class="image-analysis-box" id="track-image-analysis-box">
-                                    <span class="analysis-tag"><i class="fa-solid fa-brain text-accent-teal"></i> AI Image Analysis</span>
-                                    <p id="track-image-analysis-text">Scanning image matrices...</p>
+                                    <span class="analysis-tag"><i class="fa-solid fa-brain text-accent-teal"></i> <span data-i18n="ai_image_analysis">AI Image Analysis</span></span>
+                                    <p id="track-image-analysis-text" data-i18n="scanning_matrices">Scanning image matrices...</p>
                                 </div>
                             </div>
 
                             <div class="tracker-meta">
-                                <div><strong>Priority:</strong> <span id="track-priority" class="text-priority-high">High</span></div>
-                                <div><strong>Assigned Worker:</strong> <span id="track-worker">Not Assigned</span></div>
+                                <div><strong data-i18n="priority">Priority:</strong> <span id="track-priority" class="text-priority-high">High</span></div>
+                                <div><strong data-i18n="assigned_worker">Assigned Worker:</strong> <span id="track-worker">Not Assigned</span></div>
                             </div>
 
                             <!-- Timeline -->
@@ -218,7 +231,7 @@
                                 <div class="timeline-step" id="step-Submitted">
                                     <div class="step-bullet"></div>
                                     <div class="step-content">
-                                        <h4>Complaint Submitted</h4>
+                                        <h4 data-i18n="step_submitted">Complaint Submitted</h4>
                                         <p class="step-time" id="time-Submitted">-</p>
                                     </div>
                                 </div>
@@ -226,7 +239,7 @@
                                 <div class="timeline-step" id="step-Assigned">
                                     <div class="step-bullet"></div>
                                     <div class="step-content">
-                                        <h4>Worker Assigned</h4>
+                                        <h4 data-i18n="step_assigned">Worker Assigned</h4>
                                         <p class="step-time" id="time-Assigned">-</p>
                                     </div>
                                 </div>
@@ -234,7 +247,7 @@
                                 <div class="timeline-step" id="step-InProgress">
                                     <div class="step-bullet"></div>
                                     <div class="step-content">
-                                        <h4>In Progress</h4>
+                                        <h4 data-i18n="step_in_progress">In Progress</h4>
                                         <p class="step-time" id="time-InProgress">-</p>
                                     </div>
                                 </div>
@@ -242,7 +255,7 @@
                                 <div class="timeline-step" id="step-Resolved">
                                     <div class="step-bullet"></div>
                                     <div class="step-content">
-                                        <h4>Resolved</h4>
+                                        <h4 data-i18n="step_resolved">Resolved</h4>
                                         <p class="step-time" id="time-Resolved">-</p>
                                     </div>
                                 </div>
@@ -253,22 +266,22 @@
 
                 <!-- Public Complaints Feed -->
                 <div class="glass-card citizen-feed-section" style="margin-top: 24px;">
-                    <h2><i class="fa-solid fa-list-check text-accent-indigo"></i> Public Civic Dashboard</h2>
-                    <p class="section-subtitle">Browse recently reported city complaints, their categories, live status, and assigned dispatch workers.</p>
+                    <h2><i class="fa-solid fa-list-check text-accent-indigo"></i> <span data-i18n="public_dashboard_title">Public Civic Dashboard</span></h2>
+                    <p class="section-subtitle" data-i18n="public_dashboard_subtitle">Browse recently reported city complaints, their categories, live status, and assigned dispatch workers.</p>
                     <div class="citizen-complaints-list" id="citizen-complaints-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 16px;">
-                        <p class="empty-list-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading public city logs...</p>
+                        <p class="empty-list-message" data-i18n="loading_public_logs"><i class="fa-solid fa-spinner fa-spin"></i> Loading public city logs...</p>
                     </div>
                 <!-- Citizen Regional Complaint Heatmap -->
                 <div class="glass-card heatmap-card-container" style="margin-top: 24px;">
                     <div class="heatmap-header">
                         <div>
-                            <h2><i class="fa-solid fa-map-location-dot text-accent-indigo"></i> Regional Complaint Heatmap</h2>
-                            <p class="section-subtitle">Live severity heatmap across city wards. Red = High complaints, Yellow = Moderate, Green = Low.</p>
+                            <h2><i class="fa-solid fa-map-location-dot text-accent-indigo"></i> <span data-i18n="regional_heatmap_title">Regional Complaint Heatmap</span></h2>
+                            <p class="section-subtitle" data-i18n="regional_heatmap_subtitle">Live severity heatmap across city wards. Red = High complaints, Yellow = Moderate, Green = Low.</p>
                         </div>
                         <div class="heatmap-legend-pills">
-                            <span class="heatmap-pill pill-red"><i class="fa-solid fa-circle"></i> High (> 5)</span>
-                            <span class="heatmap-pill pill-yellow"><i class="fa-solid fa-circle"></i> Moderate (3 - 5)</span>
-                            <span class="heatmap-pill pill-green"><i class="fa-solid fa-circle"></i> Low (1 - 2)</span>
+                            <span class="heatmap-pill pill-red"><i class="fa-solid fa-circle"></i> <span data-i18n="legend_high">High (> 5)</span></span>
+                            <span class="heatmap-pill pill-yellow"><i class="fa-solid fa-circle"></i> <span data-i18n="legend_moderate">Moderate (3 - 5)</span></span>
+                            <span class="heatmap-pill pill-green"><i class="fa-solid fa-circle"></i> <span data-i18n="legend_low">Low (1 - 2)</span></span>
                         </div>
                     </div>
                     <div id="map-citizen-heatmap" class="gis-heatmap-box"></div>
@@ -283,28 +296,28 @@
                         <div class="stat-icon"><i class="fa-solid fa-folder-open text-accent-indigo"></i></div>
                         <div class="stat-info">
                             <h3 id="stat-total-issues">0</h3>
-                            <p>Total Complaints</p>
+                            <p data-i18n="stat_total">Total Complaints</p>
                         </div>
                     </div>
                     <div class="glass-card stat-box border-amber">
                         <div class="stat-icon"><i class="fa-solid fa-clock text-accent-amber"></i></div>
                         <div class="stat-info">
                             <h3 id="stat-pending-issues">0</h3>
-                            <p>Pending Resolution</p>
+                            <p data-i18n="stat_pending">Pending Resolution</p>
                         </div>
                     </div>
                     <div class="glass-card stat-box border-emerald">
                         <div class="stat-icon"><i class="fa-solid fa-circle-check text-accent-emerald"></i></div>
                         <div class="stat-info">
                             <h3 id="stat-resolved-issues">0</h3>
-                            <p>Resolved Issues</p>
+                            <p data-i18n="stat_resolved">Resolved Issues</p>
                         </div>
                     </div>
                     <div class="glass-card stat-box border-rose">
                         <div class="stat-icon"><i class="fa-solid fa-circle-exclamation text-priority-high"></i></div>
                         <div class="stat-info">
                             <h3 id="stat-escalated-issues">0</h3>
-                            <p>48h Escalations</p>
+                            <p data-i18n="stat_escalated">48h Escalations</p>
                         </div>
                     </div>
                 </div>
@@ -313,13 +326,13 @@
                 <div class="glass-card heatmap-card-container" style="margin-bottom: 24px;">
                     <div class="heatmap-header">
                         <div>
-                            <h2><i class="fa-solid fa-fire text-priority-high"></i> Citywide Regional Complaint Density Heatmap</h2>
-                            <p class="section-subtitle">Real-time GIS density overlay of civic complaints across wards to prioritize resource allocation.</p>
+                            <h2><i class="fa-solid fa-fire text-priority-high"></i> <span data-i18n="citywide_heatmap_title">Citywide Regional Complaint Density Heatmap</span></h2>
+                            <p class="section-subtitle" data-i18n="citywide_heatmap_subtitle">Real-time GIS density overlay of civic complaints across wards to prioritize resource allocation.</p>
                         </div>
                         <div class="heatmap-legend-pills">
-                            <span class="heatmap-pill pill-red"><i class="fa-solid fa-circle"></i> High Severity (> 5)</span>
-                            <span class="heatmap-pill pill-yellow"><i class="fa-solid fa-circle"></i> Moderate (3 - 5)</span>
-                            <span class="heatmap-pill pill-green"><i class="fa-solid fa-circle"></i> Low (1 - 2)</span>
+                            <span class="heatmap-pill pill-red"><i class="fa-solid fa-circle"></i> <span data-i18n="legend_high_severity">High Severity (> 5)</span></span>
+                            <span class="heatmap-pill pill-yellow"><i class="fa-solid fa-circle"></i> <span data-i18n="legend_moderate">Moderate (3 - 5)</span></span>
+                            <span class="heatmap-pill pill-green"><i class="fa-solid fa-circle"></i> <span data-i18n="legend_low">Low (1 - 2)</span></span>
                         </div>
                     </div>
                     <div id="map-authority-heatmap" class="gis-heatmap-box"></div>
@@ -329,32 +342,32 @@
 
                 <div class="dashboard-table-section glass-card">
                     <div class="table-header">
-                        <h2><i class="fa-solid fa-list-check text-accent-indigo"></i> Active Complaints Registry</h2>
+                        <h2><i class="fa-solid fa-list-check text-accent-indigo"></i> <span data-i18n="active_registry_title">Active Complaints Registry</span></h2>
                         
                         <!-- Filters -->
                         <div class="filters-row">
                             <div class="filter-group">
-                                <label for="filter-status">Status:</label>
+                                <label for="filter-status" data-i18n="filter_status_label">Status:</label>
                                 <select id="filter-status">
-                                    <option value="">All</option>
-                                    <option value="Submitted">Submitted</option>
-                                    <option value="Assigned">Assigned</option>
-                                    <option value="In Progress">In Progress</option>
-                                    <option value="Resolved">Resolved</option>
-                                    <option value="Closed">Closed</option>
+                                    <option value="" data-i18n="status_all">All</option>
+                                    <option value="Submitted" data-i18n="status_submitted">Submitted</option>
+                                    <option value="Assigned" data-i18n="status_assigned">Assigned</option>
+                                    <option value="In Progress" data-i18n="status_in_progress">In Progress</option>
+                                    <option value="Resolved" data-i18n="status_resolved">Resolved</option>
+                                    <option value="Closed" data-i18n="status_closed">Closed</option>
                                 </select>
                             </div>
                             <div class="filter-group">
-                                <label for="filter-priority">Priority:</label>
+                                <label for="filter-priority" data-i18n="filter_priority_label">Priority:</label>
                                 <select id="filter-priority">
-                                    <option value="">All</option>
-                                    <option value="High">High</option>
-                                    <option value="Medium">Medium</option>
-                                    <option value="Low">Low</option>
+                                    <option value="" data-i18n="status_all">All</option>
+                                    <option value="High" data-i18n="priority_high">High</option>
+                                    <option value="Medium" data-i18n="priority_medium">Medium</option>
+                                    <option value="Low" data-i18n="priority_low">Low</option>
                                 </select>
                             </div>
                             <!-- Ward filter removed -->
-                            <button id="btn-refresh-dashboard" class="btn-refresh"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+                            <button id="btn-refresh-dashboard" class="btn-refresh"><i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="refresh">Refresh</span></button>
                         </div>
                     </div>
 
@@ -363,19 +376,19 @@
                         <table class="dashboard-table">
                             <thead>
                                 <tr>
-                                    <th>ID</th>
-                                    <th>Category</th>
-                                    <th>Description</th>
-                                    <th>Priority</th>
-                                    <th>Status</th>
-                                    <th>Reported Date</th>
-                                    <th>Assigned Worker</th>
-                                    <th>Actions</th>
+                                    <th data-i18n="th_id">ID</th>
+                                    <th data-i18n="th_category">Category</th>
+                                    <th data-i18n="th_description">Description</th>
+                                    <th data-i18n="th_priority">Priority</th>
+                                    <th data-i18n="th_status">Status</th>
+                                    <th data-i18n="th_reported_date">Reported Date</th>
+                                    <th data-i18n="th_assigned_worker">Assigned Worker</th>
+                                    <th data-i18n="th_actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="complaints-table-body">
                                 <tr>
-                                    <td colspan="9" class="empty-table-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading complaints database...</td>
+                                    <td colspan="9" class="empty-table-message" data-i18n="loading_database"><i class="fa-solid fa-spinner fa-spin"></i> Loading complaints database...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -386,33 +399,33 @@
                 <div id="assignment-modal" class="modal-overlay hidden">
                     <div class="glass-card modal-content">
                         <div class="modal-header">
-                            <h3><i class="fa-solid fa-user-plus text-accent-teal"></i> Assign Task to Worker</h3>
+                            <h3><i class="fa-solid fa-user-plus text-accent-teal"></i> <span data-i18n="assign_modal_title">Assign Task to Worker</span></h3>
                             <button class="btn-close-modal" id="btn-close-assignment-modal">&times;</button>
                         </div>
                         <div class="modal-body">
                             <div class="assignment-info-summary">
-                                <p><strong>Complaint ID:</strong> <span id="modal-complaint-id">COMP-XXXX</span></p>
-                                <p><strong>Category:</strong> <span id="modal-complaint-category" class="badge">Pothole</span></p>
-                                <p><strong>Description:</strong> <span id="modal-complaint-desc">...</span></p>
+                                <p><strong data-i18n="complaint_id_label">Complaint ID:</strong> <span id="modal-complaint-id">COMP-XXXX</span></p>
+                                <p><strong data-i18n="category_label">Category:</strong> <span id="modal-complaint-category" class="badge">Pothole</span></p>
+                                <p><strong data-i18n="description">Description:</strong> <span id="modal-complaint-desc">...</span></p>
                             </div>
                             <hr class="modal-separator">
                             <form id="assign-worker-form">
                                 <input type="hidden" id="modal-hidden-complaint-id">
                                 <div class="form-group">
-                                    <label for="modal-worker-select">Select Dispatch Worker</label>
+                                    <label for="modal-worker-select" data-i18n="select_worker_label">Select Dispatch Worker</label>
                                     <select id="modal-worker-select" required>
-                                        <option value="">-- Choose Worker --</option>
+                                        <option value="" data-i18n="choose_worker_option">-- Choose Worker --</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label for="modal-priority-select">Adjust Priority (Heuristically Classified)</label>
+                                    <label for="modal-priority-select" data-i18n="adjust_priority_label">Adjust Priority (Heuristically Classified)</label>
                                     <select id="modal-priority-select">
-                                        <option value="High">High</option>
-                                        <option value="Medium">Medium</option>
-                                        <option value="Low">Low</option>
+                                        <option value="High" data-i18n="priority_high">High</option>
+                                        <option value="Medium" data-i18n="priority_medium">Medium</option>
+                                        <option value="Low" data-i18n="priority_low">Low</option>
                                     </select>
                                 </div>
-                                <button type="submit" class="btn-submit" id="btn-confirm-assignment">Assign & Notify Worker</button>
+                                <button type="submit" class="btn-submit" id="btn-confirm-assignment" data-i18n="assign_notify_btn">Assign & Notify Worker</button>
                             </form>
                         </div>
                     </div>
@@ -421,7 +434,7 @@
                 <!-- Charts Section -->
                 <div class="analytics-charts-grid">
                     <div class="glass-card chart-container">
-                        <h3><i class="fa-solid fa-chart-pie text-accent-indigo"></i> Issue Categories Distribution</h3>
+                        <h3><i class="fa-solid fa-chart-pie text-accent-indigo"></i> <span data-i18n="chart_distribution_title">Issue Categories Distribution</span></h3>
                         <canvas id="chart-categories"></canvas>
                     </div>
                 </div>
@@ -432,13 +445,13 @@
                 <div class="worker-grid">
                     <!-- Left Panel: Job List -->
                     <div class="glass-card worker-jobs-panel">
-                        <h2><i class="fa-solid fa-toolbox text-accent-amber"></i> Worker Task Board</h2>
+                        <h2><i class="fa-solid fa-toolbox text-accent-amber"></i> <span data-i18n="worker_task_board">Worker Task Board</span></h2>
                         <div class="worker-info-banner">
-                            <p>Active User: <strong id="val-worker-name">Not Selected</strong></p>
+                            <p><span data-i18n="active_user">Active User:</span> <strong id="val-worker-name">Not Selected</strong></p>
                         </div>
                         
                         <div class="worker-jobs-list" id="worker-jobs-list">
-                            <p class="empty-jobs-message">Please select a Worker Profile from the top-right header to view tasks.</p>
+                            <p class="empty-jobs-message" data-i18n="worker_login_prompt">Please select a Worker Profile from the top-right header to view tasks.</p>
                         </div>
                     </div>
 
@@ -449,7 +462,7 @@
                                 <span class="badge-status badge-active" id="work-active-id">COMP-XXXX</span>
                                 <h3 id="work-active-category">Garbage Dump Cleanup</h3>
                             </div>
-                            <button class="btn-back-jobs" id="btn-close-work-area"><i class="fa-solid fa-times"></i> Close Map</button>
+                            <button class="btn-back-jobs" id="btn-close-work-area"><i class="fa-solid fa-times"></i> <span data-i18n="close_map">Close Map</span></button>
                         </div>
 
                         <!-- Action controls -->
@@ -457,26 +470,26 @@
                             <div class="action-step-item">
                                 <div class="step-num">1</div>
                                 <div class="step-details">
-                                    <h4>Route Navigation</h4>
-                                    <p>Follow GPS directions on GIS map below.</p>
+                                    <h4 data-i18n="step1_title">Route Navigation</h4>
+                                    <p data-i18n="step1_desc">Follow GPS directions on GIS map below.</p>
                                 </div>
                             </div>
                              <div class="action-step-item">
                                 <div class="step-num">2</div>
                                 <div class="step-details" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
-                                    <h4>Site Action & Progress Log</h4>
-                                    <button class="btn-worker-status" id="btn-toggle-in-progress">Mark "In Progress"</button>
+                                    <h4 data-i18n="step2_title">Site Action & Progress Log</h4>
+                                    <button class="btn-worker-status" id="btn-toggle-in-progress" data-i18n="btn_mark_in_progress">Mark "In Progress"</button>
                                     <div id="worker-log-input-group" class="hidden" style="display: flex; gap: 8px; width: 100%; margin-top: 4px;">
-                                        <input type="text" id="worker-progress-notes" placeholder="Add site update (e.g. 'Arrived', '50% cleaned')" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
-                                        <button type="button" class="btn-submit-blue" id="btn-worker-add-notes" style="padding: 8px 12px; font-size: 0.85rem; border-radius: 8px;"><i class="fa-solid fa-plus"></i> Log</button>
+                                        <input type="text" id="worker-progress-notes" data-i18n-placeholder="worker_notes_placeholder" placeholder="Add site update (e.g. 'Arrived', '50% cleaned')" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
+                                        <button type="button" class="btn-submit-blue" id="btn-worker-add-notes" style="padding: 8px 12px; font-size: 0.85rem; border-radius: 8px;"><i class="fa-solid fa-plus"></i> <span data-i18n="btn_log_notes">Log</span></button>
                                     </div>
                                 </div>
                             </div>
                             <div class="action-step-item">
                                 <div class="step-num">3</div>
                                 <div class="step-details">
-                                    <h4>Complete Resolution</h4>
-                                    <button class="btn-worker-resolve" id="btn-open-resolve-modal">Resolve Task</button>
+                                    <h4 data-i18n="step3_title">Complete Resolution</h4>
+                                    <button class="btn-worker-resolve" id="btn-open-resolve-modal" data-i18n="btn_resolve_task">Resolve Task</button>
                                 </div>
                             </div>
                         </div>
@@ -485,8 +498,8 @@
                         <div class="worker-map-wrapper">
                             <div id="map-worker-route"></div>
                             <div class="map-route-legend">
-                                <span><i class="fa-solid fa-user-location text-accent-teal"></i> Worker Location (Mocked)</span>
-                                <span><i class="fa-solid fa-triangle-exclamation text-accent-amber"></i> Complaint Location</span>
+                                <span><i class="fa-solid fa-user-location text-accent-teal"></i> <span data-i18n="worker_loc_legend">Worker Location (Mocked)</span></span>
+                                <span><i class="fa-solid fa-triangle-exclamation text-accent-amber"></i> <span data-i18n="complaint_loc_legend">Complaint Location</span></span>
                             </div>
                         </div>
                     </div>
@@ -496,17 +509,17 @@
                 <div id="resolve-modal" class="modal-overlay hidden">
                     <div class="glass-card modal-content">
                         <div class="modal-header">
-                            <h3><i class="fa-solid fa-clipboard-check text-accent-emerald"></i> Resolve Complaint</h3>
+                            <h3><i class="fa-solid fa-clipboard-check text-accent-emerald"></i> <span data-i18n="resolve_modal_title">Resolve Complaint</span></h3>
                             <button class="btn-close-modal" id="btn-close-resolve-modal">&times;</button>
                         </div>
                         <div class="modal-body">
                             <form id="resolve-task-form">
                                 <input type="hidden" id="resolve-hidden-complaint-id">
                                 <div class="form-group">
-                                    <label>Upload Resolution Photo Proof</label>
+                                    <label data-i18n="upload_resolution_photo">Upload Resolution Photo Proof</label>
                                     <div class="file-drop-area">
                                         <i class="fa-solid fa-camera"></i>
-                                        <span>Choose resolved photo</span>
+                                        <span data-i18n="choose_resolved_photo">Choose resolved photo</span>
                                         <input type="file" id="resolve-image" accept="image/*" required>
                                     </div>
                                     <div id="resolve-preview-container" class="hidden">
@@ -514,10 +527,10 @@
                                     </div>
                                 </div>
                                 <div class="form-group">
-                                    <label for="resolve-notes">Completion Notes</label>
-                                    <textarea id="resolve-notes" placeholder="Write details about the repair/cleanup performed..." required></textarea>
+                                    <label for="resolve-notes" data-i18n="completion_notes_label">Completion Notes</label>
+                                    <textarea id="resolve-notes" data-i18n-placeholder="completion_notes_placeholder" placeholder="Write details about the repair/cleanup performed..." required></textarea>
                                 </div>
-                                <button type="submit" class="btn-submit btn-emerald-submit" id="btn-confirm-resolve">Submit Resolution</button>
+                                <button type="submit" class="btn-submit btn-emerald-submit" id="btn-confirm-resolve" data-i18n="submit_resolution_btn">Submit Resolution</button>
                             </form>
                         </div>
                     </div>
@@ -529,17 +542,17 @@
                 <div class="journalist-grid">
                     <!-- Left Column: Redirected Issues list -->
                     <div class="glass-card journalist-left-panel">
-                        <h2><i class="fa-solid fa-triangle-exclamation text-priority-high"></i> Unopened Complaints</h2>
-                        <p class="section-subtitle">Issues redirected to press watchdogs after 5 mins of authority inactivity.</p>
+                        <h2><i class="fa-solid fa-triangle-exclamation text-priority-high"></i> <span data-i18n="unopened_complaints_title">Unopened Complaints</span></h2>
+                        <p class="section-subtitle" data-i18n="unopened_complaints_subtitle">Issues redirected to press watchdogs after 5 mins of authority inactivity.</p>
                         <div id="journalist-redirect-list" class="journalist-list">
-                            <p class="empty-list-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading redirected complaints...</p>
+                            <p class="empty-list-message" data-i18n="loading_redirected"><i class="fa-solid fa-spinner fa-spin"></i> Loading redirected complaints...</p>
                         </div>
                     </div>
 
                     <!-- Right Column: AI Agent Report Station -->
                     <div class="glass-card journalist-right-panel hidden" id="journalist-station">
                         <div class="station-header">
-                            <h3><i class="fa-solid fa-microchip text-accent-indigo"></i> AI Agent Report Station</h3>
+                            <h3><i class="fa-solid fa-microchip text-accent-indigo"></i> <span data-i18n="ai_station_title">AI Agent Report Station</span></h3>
                             <button class="btn-close-station" id="btn-close-journalist-station">&times;</button>
                         </div>
                         <div class="station-complaint-summary" id="station-complaint-summary">
@@ -548,13 +561,13 @@
                         
                         <div class="ai-agent-console-box">
                             <button class="btn-submit-blue" id="btn-trigger-ai-agent">
-                                <i class="fa-solid fa-robot"></i> Run AI Investigative Agent
+                                <i class="fa-solid fa-robot"></i> <span data-i18n="run_ai_agent_btn">Run AI Investigative Agent</span>
                             </button>
                             
                             <!-- Progress Loader -->
                             <div class="ai-loader-container hidden" id="ai-agent-loader">
                                 <div class="ai-spinner"></div>
-                                <span class="ai-loader-text">AI Agent scanning database & writing report...</span>
+                                <span class="ai-loader-text" data-i18n="ai_agent_scanning">AI Agent scanning database & writing report...</span>
                             </div>
                         </div>
 
@@ -564,16 +577,16 @@
                             <form id="journalist-report-form">
                                 <input type="hidden" id="report-hidden-complaint-id">
                                 <div class="form-group">
-                                    <label class="uppercase-label">Article Title</label>
+                                    <label class="uppercase-label" data-i18n="article_title_label">Article Title</label>
                                     <input type="text" id="report-title-input" required>
                                 </div>
                                 <div class="form-group">
-                                    <label class="uppercase-label">Article Body Content</label>
+                                    <label class="uppercase-label" data-i18n="article_body_label">Article Body Content</label>
                                     <textarea id="report-content-input" rows="12" required></textarea>
                                 </div>
                                 <div class="form-actions-row">
-                                    <button type="button" class="btn-submit" id="btn-save-draft"><i class="fa-solid fa-floppy-disk"></i> Save Draft</button>
-                                    <button type="submit" class="btn-submit-blue" id="btn-publish-report"><i class="fa-solid fa-paper-plane"></i> Publish Report</button>
+                                    <button type="button" class="btn-submit" id="btn-save-draft"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="save_draft">Save Draft</span></button>
+                                    <button type="submit" class="btn-submit-blue" id="btn-publish-report"><i class="fa-solid fa-paper-plane"></i> <span data-i18n="publish_report">Publish Report</span></button>
                                 </div>
                             </form>
                         </div>
@@ -582,10 +595,10 @@
 
                 <!-- Bottom Section: Published Articles Feed -->
                 <div class="glass-card journalist-feed-section">
-                    <h2><i class="fa-solid fa-bullhorn text-accent-teal"></i> Published Press Room</h2>
-                    <p class="section-subtitle">Watchdog articles live and broadcasted to public press feeds.</p>
+                    <h2><i class="fa-solid fa-bullhorn text-accent-teal"></i> <span data-i18n="press_room_title">Published Press Room</span></h2>
+                    <p class="section-subtitle" data-i18n="press_room_subtitle">Watchdog articles live and broadcasted to public press feeds.</p>
                     <div class="published-articles-grid" id="published-articles-feed">
-                        <p class="empty-list-message">No articles published to press feeds yet.</p>
+                        <p class="empty-list-message" data-i18n="no_published_reports">No articles published to press feeds yet.</p>
                     </div>
                 </div>
             </section>
@@ -595,7 +608,7 @@
         <div class="modal-overlay hidden" id="navigation-modal" style="z-index: 100000;">
             <div class="modal-content" style="max-width: 800px; width: 90%; height: 85vh; display: flex; flex-direction: column; padding: 24px; background: rgba(15, 23, 42, 0.95); border: 1px solid var(--panel-border); box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
                 <div class="modal-header" style="margin-bottom: 16px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
-                    <h3 style="font-family: var(--font-heading); font-size: 1.25rem;"><i class="fa-solid fa-map-location-dot text-accent-indigo"></i> GPS Navigation Route</h3>
+                    <h3 style="font-family: var(--font-heading); font-size: 1.25rem;"><i class="fa-solid fa-map-location-dot text-accent-indigo"></i> <span data-i18n="gps_navigation_title">GPS Navigation Route</span></h3>
                     <button class="btn-close-modal" id="btn-close-navigation-modal">&times;</button>
                 </div>
                 <div class="modal-body" style="flex: 1; display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; min-height: 0;">
@@ -604,14 +617,14 @@
                         <div id="map-modal-navigation" style="flex: 1; border-radius: 12px; border: 1px solid var(--panel-border); min-height: 250px; background: #1e293b;"></div>
                         <div style="margin-top: 12px;">
                             <button class="btn-submit-blue" id="btn-open-real-google-maps" style="margin-top: 0; padding: 12px 18px; font-size: 0.88rem; border-radius: 8px;">
-                                <i class="fa-solid fa-arrow-up-right-from-square"></i> Open in Google Maps
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i> <span data-i18n="open_google_maps">Open in Google Maps</span>
                             </button>
                         </div>
                     </div>
                     <!-- Directions Steps Column -->
                     <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; overflow-y: auto;">
                         <h4 style="margin-bottom: 12px; border-bottom: 1px solid var(--panel-border); padding-bottom: 6px; color: var(--text-primary); font-family: var(--font-heading); font-size: 0.95rem;">
-                            <i class="fa-solid fa-location-arrow"></i> Turn-by-Turn Directions
+                            <i class="fa-solid fa-location-arrow"></i> <span data-i18n="turn_by_turn_title">Turn-by-Turn Directions</span>
                         </h4>
                         <div id="navigation-steps-list" style="display: flex; flex-direction: column; gap: 12px; font-size: 0.85rem; color: var(--text-secondary);">
                             <!-- Step items rendered dynamically -->
@@ -641,154 +654,164 @@
                 <div class="auth-brand-header">
                     <div class="auth-brand-icon"><i class="fa-solid fa-city"></i></div>
                     <h1 class="auth-brand-title">SmartCivic <span>AI</span></h1>
-                    <p class="auth-brand-tagline">Intelligent City Issue Reporting & Dispatch</p>
+                    <p class="auth-brand-tagline" data-i18n="brand_tagline">Intelligent City Issue Reporting & Dispatch</p>
+                </div>
+                <!-- Modal Language Switcher -->
+                <div class="auth-lang-row">
+                    <span class="auth-lang-label"><i class="fa-solid fa-globe"></i> <span data-i18n="select_language">Language:</span></span>
+                    <div class="lang-btn-group">
+                        <button type="button" class="btn-lang active" data-lang="en"><span class="lang-tag">EN</span> English</button>
+                        <button type="button" class="btn-lang" data-lang="kn"><span class="lang-tag">KN</span> ಕನ್ನಡ</button>
+                        <button type="button" class="btn-lang" data-lang="hi"><span class="lang-tag">HI</span> हिंदी</button>
+                        <button type="button" class="btn-lang" data-lang="te"><span class="lang-tag">TE</span> తెలుగు</button>
+                    </div>
                 </div>
 
                 <div id="signup-panel" class="auth-panel hidden">
-                    <h2 class="auth-title">Create Account</h2>
-                    <p class="auth-subtitle">Join the SmartCivic platform</p>
+                    <h2 class="auth-title" data-i18n="create_account_title">Create Account</h2>
+                    <p class="auth-subtitle" data-i18n="join_platform_subtitle">Join the SmartCivic platform</p>
                     
-                    <div id="signup-authority-notice" class="hidden" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); padding: 12px 14px; border-radius: 8px; font-size: 12px; color: #c7d2fe; margin-bottom: 16px; line-height: 1.4;">
+                    <div id="signup-authority-notice" class="hidden" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); padding: 12px 14px; border-radius: 8px; font-size: 0.85rem; color: #c7d2fe; margin-bottom: 16px; line-height: 1.4;">
                         <i class="fa-solid fa-shield-halved" style="color: #818cf8; margin-right: 6px;"></i>
-                        <strong>Authority Notice:</strong> Authority registrations require Municipal Admin approval. Your permanent <strong>Secret Authorization Key</strong> will be emailed to your Gmail once approved.
+                        <strong data-i18n="authority_notice_signup">Authority Notice: Authority registrations require Municipal Admin approval. Your permanent Secret Authorization Key will be emailed to your Gmail once approved.</strong>
                     </div>
 
                     <form id="signup-form">
                         <div class="form-group">
-                            <label class="uppercase-label">Full Name</label>
+                            <label class="uppercase-label" data-i18n="full_name_label">Full Name</label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-user"></i>
-                                <input type="text" id="signup-name" placeholder="John Doe" required>
+                                <input type="text" id="signup-name" data-i18n-placeholder="full_name_placeholder" placeholder="John Doe" required>
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label class="uppercase-label">Role</label>
+                            <label class="uppercase-label" data-i18n="role_label">Role</label>
                             <div class="role-selector-row">
                                 <button type="button" class="role-card active" data-role="citizen">
                                     <i class="fa-solid fa-user"></i>
-                                    <span>CITIZEN</span>
+                                    <span data-i18n="role_citizen">CITIZEN</span>
                                 </button>
                                 <button type="button" class="role-card" data-role="worker">
                                     <i class="fa-solid fa-helmet-safety"></i>
-                                    <span>WORKER</span>
+                                    <span data-i18n="role_worker">WORKER</span>
                                 </button>
                                 <button type="button" class="role-card" data-role="authority">
                                     <i class="fa-solid fa-shield-halved"></i>
-                                    <span>AUTHORITY</span>
+                                    <span data-i18n="role_authority">AUTHORITY</span>
                                 </button>
                                 <button type="button" class="role-card" data-role="journalist">
                                     <i class="fa-solid fa-newspaper"></i>
-                                    <span>JOURNALIST</span>
+                                    <span data-i18n="role_journalist">JOURNALIST</span>
                                 </button>
                             </div>
                             <input type="hidden" id="signup-role" value="citizen">
                         </div>
 
                         <div class="form-group">
-                            <label class="uppercase-label">Gmail Address</label>
+                            <label class="uppercase-label" data-i18n="gmail_label">Gmail Address</label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-envelope"></i>
-                                <input type="email" id="signup-gmail" placeholder="your.name@gmail.com" required>
+                                <input type="email" id="signup-gmail" data-i18n-placeholder="signup_gmail_placeholder" placeholder="your.name@gmail.com" required>
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label class="uppercase-label">Password</label>
+                            <label class="uppercase-label" data-i18n="password_label">Password</label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-lock"></i>
-                                <input type="password" id="signup-password" placeholder="••••••••" required>
+                                <input type="password" id="signup-password" data-i18n-placeholder="signup_password_placeholder" placeholder="••••••••" required>
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label class="uppercase-label">Contact Phone Number</label>
+                            <label class="uppercase-label" data-i18n="contact_phone_label">Contact Phone Number</label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-phone"></i>
-                                <input type="tel" id="signup-contact" placeholder="+1 555-0101" required>
+                                <input type="tel" id="signup-contact" data-i18n-placeholder="signup_contact_placeholder" placeholder="+91 9876543210" required>
                             </div>
                         </div>
 
-                        <button type="submit" class="btn-submit-blue" id="btn-submit-signup">Create Account</button>
+                        <button type="submit" class="btn-submit-blue" id="btn-submit-signup" data-i18n="create_account_btn">Create Account</button>
                         
                         <div class="auth-switch-text">
-                            Already have an account? <span id="link-go-to-login" class="switch-link">Sign in</span>
+                            <span data-i18n="already_have_account">Already have an account?</span> <span id="link-go-to-login" class="switch-link" data-i18n="sign_in_link">Sign in</span>
                         </div>
                     </form>
                 </div>
 
                 <div id="login-panel" class="auth-panel">
-                    <h2 class="auth-title">Welcome Back</h2>
-                    <p class="auth-subtitle">Select your portal role to sign in</p>
+                    <h2 class="auth-title" data-i18n="welcome_back_title">Welcome Back</h2>
+                    <p class="auth-subtitle" data-i18n="select_role_subtitle">Select your portal role to sign in</p>
                     
                     <div class="form-group" style="margin-bottom: 16px;">
-                        <label class="uppercase-label">Choose Role</label>
+                        <label class="uppercase-label" data-i18n="choose_role_login">Choose Role</label>
                         <div class="role-selector-row login-role-selector">
                             <button type="button" class="role-card active" data-login-role="citizen">
                                 <i class="fa-solid fa-user"></i>
-                                <span>CITIZEN</span>
+                                <span data-i18n="role_citizen">CITIZEN</span>
                             </button>
                             <button type="button" class="role-card" data-login-role="authority">
                                 <i class="fa-solid fa-shield-halved"></i>
-                                <span>AUTHORITY</span>
+                                <span data-i18n="role_authority">AUTHORITY</span>
                             </button>
                             <button type="button" class="role-card" data-login-role="worker">
                                 <i class="fa-solid fa-helmet-safety"></i>
-                                <span>WORKER</span>
+                                <span data-i18n="role_worker">WORKER</span>
                             </button>
                             <button type="button" class="role-card" data-login-role="journalist">
                                 <i class="fa-solid fa-newspaper"></i>
-                                <span>JOURNALIST</span>
+                                <span data-i18n="role_journalist">JOURNALIST</span>
                             </button>
                         </div>
                         <input type="hidden" id="login-role" value="citizen">
                     </div>
 
-                    <div id="login-authority-alert" class="hidden" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); padding: 10px 14px; border-radius: 8px; font-size: 12px; color: #c7d2fe; margin-bottom: 16px; line-height: 1.4;">
+                    <div id="login-authority-alert" class="hidden" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); padding: 12px 14px; border-radius: 8px; font-size: 0.85rem; color: #c7d2fe; margin-bottom: 16px; line-height: 1.4;">
                         <i class="fa-solid fa-key" style="color: #818cf8; margin-right: 6px;"></i>
-                        <strong>Authority Sign In:</strong> Requires your <strong>Secret Access Key</strong> sent to your Gmail upon Admin approval.
+                        <strong data-i18n="authority_alert_login">Authority Sign In: Requires your Secret Access Key sent to your Gmail upon Admin approval.</strong>
                     </div>
 
                     <form id="login-form">
                         <div class="form-group">
-                            <label class="uppercase-label">Gmail Address</label>
+                            <label class="uppercase-label" data-i18n="gmail_label">Gmail Address</label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-envelope"></i>
-                                <input type="email" id="login-gmail" placeholder="your.name@gmail.com" required>
+                                <input type="email" id="login-gmail" data-i18n-placeholder="signup_gmail_placeholder" placeholder="your.name@gmail.com" required>
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label class="uppercase-label">Password</label>
+                            <label class="uppercase-label" data-i18n="password_label">Password</label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-lock"></i>
-                                <input type="password" id="login-password" placeholder="••••••••" required>
+                                <input type="password" id="login-password" data-i18n-placeholder="signup_password_placeholder" placeholder="••••••••" required>
                             </div>
                         </div>
 
                         <div class="form-group hidden" id="login-secret-key-group">
                             <label class="uppercase-label" style="display: flex; justify-content: space-between; align-items: center;">
-                                <span>Secret Access Key</span>
-                                <span style="font-size: 10px; color: var(--color-cyan); font-weight: 700; background: rgba(6, 182, 212, 0.15); padding: 2px 6px; border-radius: 4px;">REQUIRED FOR AUTHORITY</span>
+                                <span data-i18n="secret_key_label">Secret Access Key</span>
+                                <span style="font-size: 0.75rem; color: #38bdf8; font-weight: 700; background: rgba(6, 182, 212, 0.15); padding: 3px 8px; border-radius: 4px;" data-i18n="secret_key_required">REQUIRED FOR AUTHORITY</span>
                             </label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-key"></i>
-                                <input type="text" id="login-secret-key" placeholder="AUTH-XXXX-XXXX" autocomplete="off" style="font-family: 'JetBrains Mono', monospace; font-weight: 700; letter-spacing: 1px;">
+                                <input type="text" id="login-secret-key" data-i18n-placeholder="login_secret_key_placeholder" placeholder="AUTH-XXXX-XXXX" autocomplete="off" style="font-family: 'JetBrains Mono', monospace; font-weight: 700; letter-spacing: 1px;">
                             </div>
-                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                            <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 6px;" data-i18n="secret_key_hint">
                                 Enter the secret authorization key received on your registered Gmail.
                             </div>
                         </div>
 
-                        <button type="submit" class="btn-submit-blue" id="btn-submit-login">Sign In</button>
+                        <button type="submit" class="btn-submit-blue" id="btn-submit-login" data-i18n="sign_in_btn">Sign In</button>
                         
                         <div class="auth-switch-text">
-                            Don't have an account? <span id="link-go-to-signup" class="switch-link">Sign up</span>
+                            <span data-i18n="dont_have_account">Don't have an account?</span> <span id="link-go-to-signup" class="switch-link" data-i18n="sign_up_link">Sign up</span>
                         </div>
                         
-                        <div style="text-align: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
-                            <a href="/admin" target="_blank" style="color: #a5b4fc; font-size: 12px; text-decoration: none; font-weight: 600;">
-                                <i class="fa-solid fa-user-shield"></i> Go to Municipal Admin Portal &rarr;
+                        <div style="text-align: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08);">
+                            <a href="/admin" target="_blank" style="color: #a5b4fc; font-size: 0.88rem; text-decoration: none; font-weight: 600;">
+                                <i class="fa-solid fa-user-shield"></i> <span data-i18n="go_to_admin_portal">Go to Municipal Admin Portal &rarr;</span>
                             </a>
                         </div>
                     </form>
@@ -796,13 +819,15 @@
 
                 <div class="auth-error-banner hidden" id="auth-error-msg">
                     <i class="fa-solid fa-triangle-exclamation"></i>
-                    <span id="auth-error-text">Incorrect credentials. Please try again.</span>
+                    <span id="auth-error-text" data-i18n="auth_error_default">Incorrect credentials. Please try again.</span>
                 </div>
             </div>
         </div>
 
     </div>
 
+    <!-- Multilingual i18n Engine & Translations -->
+    <script src="translations.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
