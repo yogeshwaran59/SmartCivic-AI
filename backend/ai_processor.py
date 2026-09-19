@@ -252,63 +252,34 @@ def get_image_similarity(img_path1, img_path2):
         print(f"Error in image comparison: {e}")
         return 0.0
 
-def classify_complaint_text(description):
+try:
+    from hf_multilingual import (
+        classify_complaint_multilingual,
+        translate_text,
+        detect_language,
+        SUPPORTED_LANGUAGES
+    )
+except ImportError:
+    # Local directory fallback
+    import sys
+    sys.path.append(os.path.dirname(__file__))
+    from hf_multilingual import (
+        classify_complaint_multilingual,
+        translate_text,
+        detect_language,
+        SUPPORTED_LANGUAGES
+    )
+
+def classify_complaint_text(description, title=""):
     """
-    Simple keyword heuristic parser to classify complaint categories and auto-assign priorities.
+    Hugging Face Multilingual Issue Classifier & Heuristic Parser.
+    Supports English, Kannada (ಕನ್ನಡ), Hindi (हिंदी), and Telugu (తెలుగు).
     Returns: (category, priority)
-    Categories: 'pothole' | 'garbage' | 'drainage' | 'street_light' | 'other'
-    Priorities: 'High' | 'Medium' | 'Low'
     """
-    desc = description.lower()
-    
-    # Classify category
-    if any(k in desc for k in ['street_light', 'street light', 'lamp', 'bulb', 'outage', 'darkness']):
-        category = 'street_light'
-    elif any(k in desc for k in ['pothole', 'crater', 'asphalt', 'tarmac', 'bump', 'road damage', 'broken road', 'street damage']):
-        category = 'pothole'
-    elif any(k in desc for k in ['garbage', 'trash', 'waste', 'litter', 'dump', 'bin', 'refuse', 'stink', 'smell']):
-        category = 'garbage'
-    elif any(k in desc for k in ['drain', 'sewer', 'leak', 'overflow', 'flooding', 'flood', 'clog', 'water log', 'gutter']):
-        category = 'drainage'
-    else:
-        category = 'other'
+    res = classify_complaint_multilingual(description, title=title)
+    return res['category'], res['priority']
 
-    # Classify priority
-    priority = 'Medium'
-    
-    # Drainage issues are often high priority due to flooding and health risks
-    if category == 'drainage':
-        priority = 'High'
-        
-    # Pothole on busy/dangerous areas or causing accidents is high priority
-    elif category == 'pothole':
-        if any(k in desc for k in ['accident', 'crash', 'injury', 'danger', 'deep', 'main road', 'highway', 'traffic']):
-            priority = 'High'
-        else:
-            priority = 'Medium'
-            
-    # Garbage blocking paths or overflowing heavily is medium/high
-    elif category == 'garbage':
-        if any(k in desc for k in ['overflow', 'blocking', 'blocked', 'stink', 'smell', 'rot', 'disease']):
-            priority = 'Medium'
-        else:
-            priority = 'Low'
-            
-    # Street light in complete darkness or crime-prone/high traffic areas
-    elif category == 'street_light':
-        if any(k in desc for k in ['dark', 'complete', 'broken', 'accident', 'danger', 'safety']):
-            priority = 'Medium'
-        else:
-            priority = 'Low'
-            
-    # Other default checks
-    elif category == 'other':
-        if any(k in desc for k in ['hazard', 'emergency', 'electric', 'wire', 'fire']):
-            priority = 'High'
-        else:
-            priority = 'Low'
 
-    return category, priority
 
 def analyze_and_describe_image(img_path):
     """

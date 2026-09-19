@@ -51,13 +51,25 @@
             <!-- Navbar Nav -->
             <nav class="nav-links">
                 <button class="nav-btn active" data-tab="citizen-portal" id="btn-citizen"><i class="fa-solid fa-users"></i> <span data-i18n="tab_citizen">Citizen Portal</span></button>
-                <button class="nav-btn" data-tab="authority-dashboard" id="btn-authority"><i class="fa-solid fa-shield-halved"></i> <span data-i18n="tab_authority">Authority Dashboard</span></button>
+                <button class="nav-btn" data-tab="authority-dashboard" id="btn-authority"><i class="fa-solid fa-shield-halved"></i> <span data-i18n="tab_authority">Corporator Portal</span></button>
+                <button class="nav-btn" data-tab="higher-authority-dashboard" id="btn-higher-authority"><i class="fa-solid fa-landmark-flag"></i> <span data-i18n="tab_higher_authority">Higher Authority</span></button>
                 <button class="nav-btn" data-tab="worker-module" id="btn-worker"><i class="fa-solid fa-helmet-safety"></i> <span data-i18n="tab_worker">Worker Module</span></button>
                 <button class="nav-btn" data-tab="journalist-dashboard" id="btn-journalist"><i class="fa-solid fa-newspaper"></i> <span data-i18n="tab_journalist">Journalist Dashboard</span></button>
             </nav>
 
             <!-- User Profile Banner & Header Controls -->
             <div class="header-controls">
+                <!-- Theme Toggle Button -->
+                <button class="btn-icon-header" id="theme-toggle-btn" title="Toggle Theme" aria-label="Toggle Theme">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+
+                <!-- In-App Notification Bell -->
+                <button class="btn-icon-header header-notif-btn" id="btn-header-notif" title="Notifications" aria-label="Notifications">
+                    <i class="fa-solid fa-bell"></i>
+                    <span class="notification-badge notif-badge hidden" id="header-notif-badge">0</span>
+                </button>
+
                 <!-- Header Luxury Language Switcher Pill -->
                 <div class="header-lang-wrapper" id="header-lang-wrapper">
                     <div class="lang-selector-pill" role="group" aria-label="Language Selector">
@@ -72,7 +84,9 @@
                 </div>
 
                 <div class="user-status-wrapper hidden" id="user-profile-banner">
-                    <span class="user-status-text"><i class="fa-solid fa-user-circle text-accent-indigo"></i> <strong id="lbl-user-name" data-i18n="guest">Guest</strong> (<span id="lbl-user-role">citizen</span>)</span>
+                    <button class="btn-user-profile-link header-profile-btn" id="btn-header-profile" title="View & Edit Profile">
+                        <i class="fa-solid fa-user-circle text-accent-indigo"></i> <strong id="lbl-user-name" data-i18n="guest">Guest</strong> (<span id="lbl-user-role">citizen</span>)
+                    </button>
                     <button class="btn-logout" id="btn-logout-session"><i class="fa-solid fa-right-from-bracket"></i> <span data-i18n="logout">Logout</span></button>
                 </div>
                 <button class="btn-login-header" id="btn-login-trigger"><i class="fa-solid fa-right-to-bracket"></i> <span data-i18n="login_register">Login / Register</span></button>
@@ -95,15 +109,35 @@
                         
                         <form id="report-form" enctype="multipart/form-data">
                             <div class="form-group">
+                                <label for="form-title"><i class="fa-solid fa-heading"></i> <span data-i18n="title_label">Issue Title</span></label>
+                                <input type="text" id="form-title" data-i18n-placeholder="title_placeholder" placeholder="e.g. Hazardous deep pothole on main road">
+                            </div>
+
+                            <div class="form-group">
                                 <label for="form-category-preset"><i class="fa-solid fa-list-check"></i> <span data-i18n="select_category_label">Select Issue Category / Type</span></label>
                                 <select id="form-category-preset" class="form-select-category">
                                     <option value="" data-i18n="select_category_default">-- Select Issue Category (Or Type Custom Details Below) --</option>
-                                    <option value="Pothole" data-i18n="cat_pothole">Pothole</option>
-                                    <option value="Drainage" data-i18n="cat_drainage">Drainage</option>
-                                    <option value="Garbage" data-i18n="cat_garbage">Garbage</option>
-                                    <option value="Street Light" data-i18n="cat_streetlight">Street Light</option>
-                                    <option value="Footpath" data-i18n="cat_footpath">Footpath</option>
-                                    <option value="Manhole" data-i18n="cat_manhole">Manhole</option>
+                                    <option value="pothole" data-i18n="cat_pothole">Potholes</option>
+                                    <option value="garbage" data-i18n="cat_garbage">Garbage & Waste</option>
+                                    <option value="sewage_overflow" data-i18n="cat_sewage">Sewage Overflow</option>
+                                    <option value="water_leakage" data-i18n="cat_water_leakage">Water Leakage</option>
+                                    <option value="street_light" data-i18n="cat_streetlight">Broken Streetlights</option>
+                                    <option value="road_damage" data-i18n="cat_road_damage">Road Damage</option>
+                                    <option value="fallen_tree" data-i18n="cat_fallen_tree">Fallen Tree</option>
+                                    <option value="illegal_dumping" data-i18n="cat_illegal_dumping">Illegal Dumping</option>
+                                    <option value="open_drain" data-i18n="cat_open_drain">Open Drain</option>
+                                    <option value="public_toilet" data-i18n="cat_public_toilet">Public Toilet Issues</option>
+                                    <option value="other" data-i18n="cat_other">Other Civic Issue</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="form-priority-select"><i class="fa-solid fa-gauge-high"></i> <span data-i18n="priority_label">Priority (Optional)</span></label>
+                                <select id="form-priority-select">
+                                    <option value="" data-i18n="auto_classify_ai">-- Auto-Classify with AI --</option>
+                                    <option value="High" data-i18n="priority_high">High</option>
+                                    <option value="Medium" data-i18n="priority_medium">Medium</option>
+                                    <option value="Low" data-i18n="priority_low">Low</option>
                                 </select>
                             </div>
 
@@ -144,13 +178,13 @@
                                 </div>
                             </div>
                             
-                            <!-- Image Section -->
+                            <!-- Image / Video Section -->
                             <div class="form-group">
-                                <label data-i18n="upload_proof_label">Upload Proof Image (For AI Similarity & Duplicate Check)</label>
+                                <label data-i18n="upload_proof_label">Upload Proof Photo / Video (For AI Verification & Geotag)</label>
                                 <div class="file-drop-area">
                                     <i class="fa-solid fa-cloud-arrow-up"></i>
-                                    <span data-i18n="choose_photo_drag">Choose a photo or drag it here</span>
-                                    <input type="file" id="form-image" accept="image/*">
+                                    <span data-i18n="choose_photo_drag">Choose photo or video (or drag here)</span>
+                                    <input type="file" id="form-image" accept="image/*,video/*">
                                 </div>
                                 <div id="image-preview-container" class="hidden">
                                     <img id="image-preview" src="" alt="Selected proof">
@@ -190,6 +224,25 @@
                             </div>
                         </div>
 
+                        <!-- My Submitted Complaints Section -->
+                        <div class="glass-card my-complaints-card" id="citizen-my-complaints-box">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <h3 style="font-size: 1.05rem; margin: 0;"><i class="fa-solid fa-clipboard-user text-accent-teal"></i> <span data-i18n="my_complaints_title">My Submitted Issues</span></h3>
+                                <button type="button" class="btn-refresh" id="btn-refresh-my-complaints" title="Refresh List"><i class="fa-solid fa-arrows-rotate"></i></button>
+                            </div>
+                            <div class="my-complaints-filter-chips" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;">
+                                <button type="button" class="citizen-filter-pill chip-filter active" data-filter="all" data-my-filter="all" data-i18n="filter_all">All</button>
+                                <button type="button" class="citizen-filter-pill chip-filter" data-filter="Submitted" data-my-filter="Submitted" data-i18n="step_submitted">Submitted</button>
+                                <button type="button" class="citizen-filter-pill chip-filter" data-filter="Active" data-my-filter="Active" data-i18n="filter_active">Active</button>
+                                <button type="button" class="citizen-filter-pill chip-filter" data-filter="Completed" data-my-filter="Completed" data-i18n="status_completed">Completed</button>
+                                <button type="button" class="citizen-filter-pill chip-filter" data-filter="Closed" data-my-filter="Closed" data-i18n="status_closed">Closed</button>
+                                <button type="button" class="citizen-filter-pill chip-filter" data-filter="Reopened" data-my-filter="Reopened" data-i18n="status_reopened">Reopened</button>
+                            </div>
+                            <div id="citizen-my-complaints-list" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+                                <p style="font-size: 0.85rem; color: var(--text-muted);"><i class="fa-solid fa-info-circle"></i> <span data-i18n="login_track_personal_hint">Log in with your email or file an issue to track your personal complaints.</span></p>
+                            </div>
+                        </div>
+
                         <!-- Tracker Details / Timeline -->
                         <div class="glass-card tracker-card hidden" id="tracker-result">
                             <div class="tracker-header">
@@ -199,15 +252,37 @@
                                 </div>
                                 <span id="track-status-badge" class="badge-status">Submitted</span>
                             </div>
-                            
+
+                            <h4 id="track-title" style="font-size: 1.08rem; color: var(--text-primary); margin: 6px 0;"></h4>
+
+                            <div id="track-deadline-box" class="deadline-badge-box hidden" style="margin: 8px 0; font-size: 0.82rem; padding: 6px 10px; border-radius: 6px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); color: var(--accent-amber);">
+                                <i class="fa-solid fa-stopwatch"></i> <span id="track-deadline-text"><span id="track-sla-deadline">Resolution SLA: In Progress</span></span>
+                            </div>
+
                             <div class="escalation-alert-banner hidden" id="track-escalation-banner">
                                 <i class="fa-solid fa-triangle-exclamation fa-beat"></i>
-                                <span><span data-i18n="escalated_banner"><strong>ESCALATED:</strong> Unresolved for > 48 hours. Routed to Supervisor.</span></span>
+                                <span><span data-i18n="escalated_banner"><strong>ESCALATED:</strong> Routed to Higher Authority due to SLA timeout.</span></span>
+                            </div>
+
+                            <div class="rejection-alert-banner hidden" id="track-rejection-banner" style="background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); border-radius: 8px; padding: 10px 12px; margin: 8px 0; color: #fecdd3; font-size: 0.86rem;">
+                                <i class="fa-solid fa-circle-xmark"></i> <strong data-i18n="rejection_banner_label">REJECTED:</strong> <span id="track-rejection-text"><span id="track-rejection-reason">...</span></span>
+                            </div>
+
+                            <div class="reopen-alert-banner hidden" id="track-reopened-banner" style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 8px; padding: 10px 12px; margin: 8px 0; color: #fef08a; font-size: 0.86rem;">
+                                <i class="fa-solid fa-rotate-left"></i> <strong data-i18n="reopened_banner_label">REOPENED:</strong> <span id="track-reopened-text"><span id="track-reopened-reason">...</span></span>
                             </div>
 
                             <div class="tracker-desc">
-                                <strong data-i18n="description">Description:</strong>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <strong data-i18n="description">Description:</strong>
+                                    <button type="button" id="btn-track-translate" class="btn-hf-translate" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #c7d2fe; font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                                        <i class="fa-solid fa-language"></i> <span data-i18n="btn_hf_translate">Translate (HF AI)</span>
+                                    </button>
+                                </div>
                                 <p id="track-description">...</p>
+                                <div id="track-hf-badge" class="hidden" style="margin-top: 4px; font-size: 0.74rem; color: #10b981; display: flex; align-items: center; gap: 4px;">
+                                    <i class="fa-solid fa-sparkles"></i> <span data-i18n="hf_translated_badge">Translated via Hugging Face AI</span>
+                                </div>
                             </div>
 
                             <div class="tracker-image-box hidden" id="track-image-container">
@@ -219,9 +294,58 @@
                                 </div>
                             </div>
 
-                            <div class="tracker-meta">
+                            <!-- Multi-Stage Evidence Gallery -->
+                            <div id="track-evidence-section" class="hidden" style="margin-top: 14px;">
+                                <strong style="font-size: 0.88rem; color: var(--text-primary);"><i class="fa-solid fa-images text-accent-teal"></i> <span data-i18n="lifecycle_evidence_label">Lifecycle Evidence Photos:</span></strong>
+                                <div id="track-evidence-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 8px;">
+                                    <div id="evidence-before-box" class="evidence-card-box hidden">
+                                        <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-indigo);"><i class="fa-solid fa-camera"></i> <span data-i18n="stage_before">Before</span></span>
+                                        <img id="evidence-before-img" src="" alt="Before Proof">
+                                        <span id="evidence-before-time" style="font-size: 0.72rem; color: var(--text-muted);"></span>
+                                    </div>
+                                    <div id="evidence-progress-box" class="evidence-card-box hidden">
+                                        <span style="font-size: 0.75rem; font-weight: 700; color: #0ea5e9;"><i class="fa-solid fa-person-digging"></i> <span data-i18n="stage_progress">In Progress</span></span>
+                                        <img id="evidence-progress-img" src="" alt="Progress Proof">
+                                        <span id="evidence-progress-time" style="font-size: 0.72rem; color: var(--text-muted);"></span>
+                                    </div>
+                                    <div id="evidence-resolved-box" class="evidence-card-box hidden">
+                                        <span style="font-size: 0.75rem; font-weight: 700; color: #10b981;"><i class="fa-solid fa-check-double"></i> <span data-i18n="stage_resolved">Resolved</span></span>
+                                        <img id="evidence-resolved-img" src="" alt="Resolved Proof">
+                                        <span id="evidence-resolved-time" style="font-size: 0.72rem; color: var(--text-muted);"></span>
+                                    </div>
+                                    <div id="evidence-inspection-box" class="evidence-card-box hidden">
+                                        <span style="font-size: 0.75rem; font-weight: 700; color: #f59e0b;"><i class="fa-solid fa-clipboard-check"></i> <span data-i18n="stage_inspection">Inspection</span></span>
+                                        <img id="evidence-inspection-img" src="" alt="Inspection Proof">
+                                        <span id="evidence-inspection-time" style="font-size: 0.72rem; color: var(--text-muted);"></span>
+                                        <p id="evidence-inspection-notes" style="font-size: 0.75rem; color: var(--text-secondary); margin: 2px 0 0 0;"></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="tracker-meta" style="margin-top: 14px;">
                                 <div><strong data-i18n="priority">Priority:</strong> <span id="track-priority" class="text-priority-high">High</span></div>
                                 <div><strong data-i18n="assigned_worker">Assigned Worker:</strong> <span id="track-worker">Not Assigned</span></div>
+                            </div>
+
+                            <!-- Citizen Verification Action Box -->
+                            <div id="track-verification-box" class="citizen-verification-panel hidden" style="margin: 16px 0; padding: 16px; border-radius: 12px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35);">
+                                <div id="track-citizen-verification-box">
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                        <i class="fa-solid fa-clipboard-check text-accent-emerald" style="font-size: 1.3rem;"></i>
+                                        <h4 style="margin: 0; color: #a7f3d0; font-family: var(--font-heading);" data-i18n="citizen_verification_title">Citizen Verification Required</h4>
+                                    </div>
+                                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4;" data-i18n="citizen_verification_desc">
+                                        Field worker has completed this resolution. Please verify the completed repair work above:
+                                    </p>
+                                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                        <button type="button" class="btn-submit btn-emerald-submit" id="btn-citizen-accept-res" style="flex: 1; min-width: 140px; margin: 0; padding: 10px 14px; font-size: 0.88rem;">
+                                            <i class="fa-solid fa-thumbs-up"></i> <span data-i18n="btn_accept_rate">Accept & Rate</span>
+                                        </button>
+                                        <button type="button" class="btn-submit" id="btn-citizen-reject-res" style="flex: 1; min-width: 140px; margin: 0; padding: 10px 14px; font-size: 0.88rem; background: rgba(244, 63, 94, 0.2); border: 1px solid rgba(244, 63, 94, 0.5); color: #fecdd3;">
+                                            <i class="fa-solid fa-thumbs-down"></i> <span data-i18n="btn_reject_reopen">Reject & Reopen</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Timeline -->
@@ -255,10 +379,22 @@
                                 <div class="timeline-step" id="step-Resolved">
                                     <div class="step-bullet"></div>
                                     <div class="step-content">
-                                        <h4 data-i18n="step_resolved">Resolved</h4>
+                                        <h4 data-i18n="step_resolved">Completed / Verified</h4>
                                         <p class="step-time" id="time-Resolved">-</p>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Comments Thread Section -->
+                            <div class="tracker-comments-section" style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--panel-border);">
+                                <h4 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--text-primary);"><i class="fa-solid fa-comments text-accent-indigo"></i> <span data-i18n="discussion_title">Public Discussion & Citizen Updates</span></h4>
+                                <div id="tracker-comments-list" style="max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;">
+                                    <p style="font-size: 0.8rem; color: var(--text-muted);" data-i18n="no_comments_yet">No comments yet.</p>
+                                </div>
+                                <form id="form-tracker-add-comment" style="display: flex; gap: 8px;">
+                                    <input type="text" id="tracker-comment-input" name="comment" data-i18n-placeholder="comment_placeholder" placeholder="Post a question or comment..." style="flex: 1; padding: 8px 12px; font-size: 0.85rem; border-radius: 8px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.25); color: var(--text-primary);">
+                                    <button type="submit" class="btn-submit-blue" id="btn-send-tracker-comment" style="padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; margin: 0;"><i class="fa-solid fa-paper-plane"></i></button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -271,6 +407,7 @@
                     <div class="citizen-complaints-list" id="citizen-complaints-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 16px;">
                         <p class="empty-list-message" data-i18n="loading_public_logs"><i class="fa-solid fa-spinner fa-spin"></i> Loading public city logs...</p>
                     </div>
+                </div>
                 <!-- Citizen Regional Complaint Heatmap -->
                 <div class="glass-card heatmap-card-container" style="margin-top: 24px;">
                     <div class="heatmap-header">
@@ -320,6 +457,20 @@
                             <p data-i18n="stat_escalated">48h Escalations</p>
                         </div>
                     </div>
+                    <div class="glass-card stat-box border-indigo">
+                        <div class="stat-icon"><i class="fa-solid fa-stopwatch text-accent-teal"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-avg-resolution-time">0h</h3>
+                            <p data-i18n="stat_avg_resolution_time">Avg Resolution Time</p>
+                        </div>
+                    </div>
+                    <div class="glass-card stat-box border-amber">
+                        <div class="stat-icon"><i class="fa-solid fa-triangle-exclamation text-accent-amber"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-overdue-count">0</h3>
+                            <p data-i18n="stat_overdue_count">Overdue SLA Breaches</p>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Authority GIS Regional Complaint Heatmap -->
@@ -339,22 +490,45 @@
                 </div>
 
                 <!-- Table & Filters Section -->
-
                 <div class="dashboard-table-section glass-card">
-                    <div class="table-header">
-                        <h2><i class="fa-solid fa-list-check text-accent-indigo"></i> <span data-i18n="active_registry_title">Active Complaints Registry</span></h2>
+                    <div class="table-header" style="flex-wrap: wrap; gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <h2><i class="fa-solid fa-list-check text-accent-indigo"></i> <span data-i18n="active_registry_title">Active Complaints Registry</span></h2>
+                            <span id="authority-ward-badge" class="badge" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; padding: 4px 10px; font-size: 0.8rem; border-radius: 6px;">Ward 1</span>
+                        </div>
                         
                         <!-- Filters -->
-                        <div class="filters-row">
+                        <div class="filters-row" style="flex-wrap: wrap; gap: 10px;">
+                            <div class="filter-group">
+                                <label for="filter-search-authority"><i class="fa-solid fa-search"></i></label>
+                                <input type="text" id="filter-search-authority" data-i18n-placeholder="filter_search_placeholder" placeholder="Search ID, title, keyword..." style="padding: 6px 12px; border-radius: 8px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text-primary); font-size: 0.85rem; width: 180px;">
+                            </div>
                             <div class="filter-group">
                                 <label for="filter-status" data-i18n="filter_status_label">Status:</label>
                                 <select id="filter-status">
                                     <option value="" data-i18n="status_all">All</option>
                                     <option value="Submitted" data-i18n="status_submitted">Submitted</option>
+                                    <option value="Verified" data-i18n="status_verified">Verified</option>
                                     <option value="Assigned" data-i18n="status_assigned">Assigned</option>
                                     <option value="In Progress" data-i18n="status_in_progress">In Progress</option>
-                                    <option value="Resolved" data-i18n="status_resolved">Resolved</option>
+                                    <option value="Completed" data-i18n="status_completed">Completed</option>
                                     <option value="Closed" data-i18n="status_closed">Closed</option>
+                                    <option value="Rejected" data-i18n="status_rejected">Rejected</option>
+                                    <option value="Reopened" data-i18n="status_reopened">Reopened</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="filter-category-authority" data-i18n="filter_category_label">Category:</label>
+                                <select id="filter-category-authority">
+                                    <option value="" data-i18n="cat_all_categories">All Categories</option>
+                                    <option value="pothole" data-i18n="cat_potholes">Potholes</option>
+                                    <option value="garbage" data-i18n="cat_garbage">Garbage</option>
+                                    <option value="sewage_overflow" data-i18n="cat_sewage">Sewage</option>
+                                    <option value="water_leakage" data-i18n="cat_water_leakage">Water Leakage</option>
+                                    <option value="street_light" data-i18n="cat_streetlight">Street Light</option>
+                                    <option value="road_damage" data-i18n="cat_road_damage">Road Damage</option>
+                                    <option value="open_drain" data-i18n="cat_open_drain">Open Drain</option>
+                                    <option value="public_toilet" data-i18n="cat_public_toilet">Public Toilet</option>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -366,7 +540,7 @@
                                     <option value="Low" data-i18n="priority_low">Low</option>
                                 </select>
                             </div>
-                            <!-- Ward filter removed -->
+                            <button id="btn-export-csv" class="btn-small" title="Export CSV Report" style="padding: 6px 12px; font-size: 0.82rem;"><i class="fa-solid fa-file-csv"></i> <span data-i18n="export_csv">Export CSV</span></button>
                             <button id="btn-refresh-dashboard" class="btn-refresh"><i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="refresh">Refresh</span></button>
                         </div>
                     </div>
@@ -382,6 +556,7 @@
                                     <th data-i18n="th_priority">Priority</th>
                                     <th data-i18n="th_status">Status</th>
                                     <th data-i18n="th_reported_date">Reported Date</th>
+                                    <th data-i18n="th_sla_deadline">SLA Deadline</th>
                                     <th data-i18n="th_assigned_worker">Assigned Worker</th>
                                     <th data-i18n="th_actions">Actions</th>
                                 </tr>
@@ -425,17 +600,200 @@
                                         <option value="Low" data-i18n="priority_low">Low</option>
                                     </select>
                                 </div>
+                                <div class="form-group">
+                                    <label for="modal-deadline-input" data-i18n="label_custom_deadline">Set Custom SLA Deadline (Optional)</label>
+                                    <input type="datetime-local" id="modal-deadline-input">
+                                </div>
                                 <button type="submit" class="btn-submit" id="btn-confirm-assignment" data-i18n="assign_notify_btn">Assign & Notify Worker</button>
                             </form>
                         </div>
                     </div>
                 </div>
 
+                <!-- Corporator Performance Leaderboard Card -->
+                <div class="glass-card" style="margin-top: 24px;">
+                    <div class="table-header">
+                        <h2><i class="fa-solid fa-trophy text-accent-amber"></i> <span data-i18n="ward_performance_title">Ward Corporator Performance Metrics</span></h2>
+                        <p class="section-subtitle" data-i18n="ward_performance_subtitle">Real-time resolution rates, average resolution speed, and citizen satisfaction ratings.</p>
+                    </div>
+                    <div class="table-scroll-container">
+                        <table class="dashboard-table">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="th_ward">Ward</th>
+                                    <th data-i18n="th_total_issues">Total Complaints</th>
+                                    <th data-i18n="th_resolved_closed">Resolved & Closed</th>
+                                    <th data-i18n="th_resolution_percent">Resolution Rate</th>
+                                    <th data-i18n="th_avg_resolution_time">Avg Resolution Time</th>
+                                    <th data-i18n="th_citizen_rating">Citizen Rating</th>
+                                    <th data-i18n="th_overdue_issues">Overdue Issues</th>
+                                </tr>
+                            </thead>
+                            <tbody id="authority-performance-table-body">
+                                <tr><td colspan="7" class="empty-table-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading ward performance...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Charts Section -->
-                <div class="analytics-charts-grid">
+                <div class="analytics-charts-grid" style="margin-top: 24px;">
                     <div class="glass-card chart-container">
                         <h3><i class="fa-solid fa-chart-pie text-accent-indigo"></i> <span data-i18n="chart_distribution_title">Issue Categories Distribution</span></h3>
                         <canvas id="chart-categories"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- HIGHER AUTHORITY DASHBOARD TAB -->
+            <section id="higher-authority-dashboard" class="tab-content">
+                <!-- Higher Authority Stats Grid -->
+                <div class="stats-grid">
+                    <div class="glass-card stat-box border-indigo">
+                        <div class="stat-icon"><i class="fa-solid fa-city text-accent-indigo"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-ha-total">0</h3>
+                            <p data-i18n="ha_stat_citywide_complaints">Citywide Complaints</p>
+                        </div>
+                    </div>
+                    <div class="glass-card stat-box border-rose">
+                        <div class="stat-icon"><i class="fa-solid fa-triangle-exclamation text-priority-high"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-ha-escalated">0</h3>
+                            <p data-i18n="ha_stat_multi_tier_escalations">Multi-Tier Escalations</p>
+                        </div>
+                    </div>
+                    <div class="glass-card stat-box border-amber">
+                        <div class="stat-icon"><i class="fa-solid fa-fire text-accent-amber"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-ha-overdue">0</h3>
+                            <p data-i18n="ha_stat_overdue_breaches">Overdue SLA Breaches</p>
+                        </div>
+                    </div>
+                    <div class="glass-card stat-box border-emerald">
+                        <div class="stat-icon"><i class="fa-solid fa-chart-line text-accent-emerald"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-ha-res-rate">0%</h3>
+                            <p data-i18n="ha_stat_resolution_rate">Resolution Rate</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cross-Ward Filters & Actions -->
+                <div class="dashboard-table-section glass-card" style="margin-bottom: 24px;">
+                    <div class="table-header" style="flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <h2><i class="fa-solid fa-landmark-flag text-accent-indigo"></i> <span data-i18n="ha_command_center">Municipal Oversight Command Center</span></h2>
+                            <p class="section-subtitle" data-i18n="ha_command_subtitle">Citywide cross-ward monitoring, administrative intervention, and reassignment.</p>
+                        </div>
+                        <div class="filters-row" style="flex-wrap: wrap; gap: 10px;">
+                            <div class="filter-group">
+                                <label for="ha-filter-ward" data-i18n="ha_filter_ward">Ward:</label>
+                                <select id="ha-filter-ward">
+                                    <option value="" data-i18n="ha_all_wards">All Wards</option>
+                                    <option value="ward_1">Ward 1</option>
+                                    <option value="ward_2">Ward 2</option>
+                                    <option value="ward_3">Ward 3</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="ha-filter-status" data-i18n="filter_status_label">Status:</label>
+                                <select id="ha-filter-status">
+                                    <option value="" data-i18n="status_all">All</option>
+                                    <option value="Submitted" data-i18n="status_submitted">Submitted</option>
+                                    <option value="Verified" data-i18n="status_verified">Verified</option>
+                                    <option value="Assigned" data-i18n="status_assigned">Assigned</option>
+                                    <option value="In Progress" data-i18n="status_in_progress">In Progress</option>
+                                    <option value="Completed" data-i18n="status_completed">Completed</option>
+                                    <option value="Closed" data-i18n="status_closed">Closed</option>
+                                    <option value="Rejected" data-i18n="status_rejected">Rejected</option>
+                                    <option value="Reopened" data-i18n="status_reopened">Reopened</option>
+                                </select>
+                            </div>
+                            <button id="btn-refresh-ha-dashboard" class="btn-refresh"><i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="refresh">Refresh</span></button>
+                            <button id="btn-ha-export-csv" class="btn-small"><i class="fa-solid fa-file-csv"></i> <span data-i18n="ha_export_csv">Export CSV</span></button>
+                        </div>
+                    </div>
+
+                    <!-- Complaints Registry Table -->
+                    <div class="table-scroll-container">
+                        <table class="dashboard-table">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="th_id">ID</th>
+                                    <th data-i18n="th_title_category">Title & Category</th>
+                                    <th data-i18n="th_ward">Ward</th>
+                                    <th data-i18n="th_priority">Priority</th>
+                                    <th data-i18n="th_status">Status</th>
+                                    <th data-i18n="th_escalation_level">Escalation Level</th>
+                                    <th data-i18n="th_sla_status">SLA Status</th>
+                                    <th data-i18n="th_assigned_worker">Assigned Worker</th>
+                                    <th data-i18n="th_actions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ha-complaints-table-body">
+                                <tr>
+                                    <td colspan="9" class="empty-table-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading citywide oversight logs...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Corporator Performance Leaderboard Across Wards -->
+                <div class="glass-card" style="margin-bottom: 24px;">
+                    <div class="table-header">
+                        <h2><i class="fa-solid fa-trophy text-accent-amber"></i> <span data-i18n="ha_leaderboard_title">Ward Corporator Performance Leaderboard</span></h2>
+                        <p class="section-subtitle" data-i18n="ha_leaderboard_subtitle">Real metrics calculated from resolved complaints, resolution times, and citizen satisfaction ratings.</p>
+                    </div>
+                    <div class="table-scroll-container">
+                        <table class="dashboard-table">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="th_rank">Rank</th>
+                                    <th data-i18n="th_ward">Ward</th>
+                                    <th data-i18n="th_responsible_corporator">Responsible Corporator</th>
+                                    <th data-i18n="th_total_issues">Total Issues</th>
+                                    <th data-i18n="th_resolved">Resolved</th>
+                                    <th data-i18n="th_resolution_percent">Resolution %</th>
+                                    <th data-i18n="th_avg_resolution_time">Avg Resolution Time</th>
+                                    <th data-i18n="th_citizen_rating">Citizen Rating</th>
+                                    <th data-i18n="th_overdue_count">Overdue Count</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ha-leaderboard-table-body">
+                                <tr>
+                                    <td colspan="9" class="empty-table-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading leaderboard...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- System-wide Audit Trail Live Log -->
+                <div class="glass-card" style="margin-bottom: 24px;">
+                    <div class="table-header">
+                        <h2><i class="fa-solid fa-fingerprint text-accent-teal"></i> <span data-i18n="ha_audit_title">System Audit Trail</span></h2>
+                        <p class="section-subtitle" data-i18n="ha_audit_subtitle">Immutable log of significant system events (creations, verifications, rejections, assignments, reassignments, notices).</p>
+                    </div>
+                    <div class="table-scroll-container">
+                        <table class="dashboard-table">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="th_timestamp">Timestamp</th>
+                                    <th data-i18n="th_action">Action</th>
+                                    <th data-i18n="th_user">User</th>
+                                    <th data-i18n="th_role">Role</th>
+                                    <th data-i18n="th_complaint_id">Complaint ID</th>
+                                    <th data-i18n="th_details">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ha-audit-table-body">
+                                <tr>
+                                    <td colspan="6" class="empty-table-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading audit trail...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>
@@ -450,6 +808,14 @@
                             <p><span data-i18n="active_user">Active User:</span> <strong id="val-worker-name">Not Selected</strong></p>
                         </div>
                         
+                        <!-- Worker Task Status Filters -->
+                        <div class="worker-filter-chips" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;">
+                            <button type="button" class="chip-filter worker-filter-chip active" data-worker-filter="all" data-i18n="filter_all">All</button>
+                            <button type="button" class="chip-filter worker-filter-chip" data-worker-filter="Assigned" data-i18n="step_assigned">Assigned</button>
+                            <button type="button" class="chip-filter worker-filter-chip" data-worker-filter="In Progress" data-i18n="step_in_progress">In Progress</button>
+                            <button type="button" class="chip-filter worker-filter-chip" data-worker-filter="Completed" data-i18n="status_completed">Completed</button>
+                        </div>
+
                         <div class="worker-jobs-list" id="worker-jobs-list">
                             <p class="empty-jobs-message" data-i18n="worker_login_prompt">Please select a Worker Profile from the top-right header to view tasks.</p>
                         </div>
@@ -478,7 +844,10 @@
                                 <div class="step-num">2</div>
                                 <div class="step-details" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
                                     <h4 data-i18n="step2_title">Site Action & Progress Log</h4>
-                                    <button class="btn-worker-status" id="btn-toggle-in-progress" data-i18n="btn_mark_in_progress">Mark "In Progress"</button>
+                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                        <button class="btn-worker-status" id="btn-toggle-in-progress" data-i18n="btn_mark_in_progress">Mark "In Progress"</button>
+                                        <button class="btn-worker-status" id="btn-open-worker-photo" style="background: rgba(14, 165, 233, 0.2); border-color: #0ea5e9; color: #38bdf8;"><i class="fa-solid fa-camera"></i> <span data-i18n="worker_photo_title">Upload Work Evidence Photo</span></button>
+                                    </div>
                                     <div id="worker-log-input-group" class="hidden" style="display: flex; gap: 8px; width: 100%; margin-top: 4px;">
                                         <input type="text" id="worker-progress-notes" data-i18n-placeholder="worker_notes_placeholder" placeholder="Add site update (e.g. 'Arrived', '50% cleaned')" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
                                         <button type="button" class="btn-submit-blue" id="btn-worker-add-notes" style="padding: 8px 12px; font-size: 0.85rem; border-radius: 8px;"><i class="fa-solid fa-plus"></i> <span data-i18n="btn_log_notes">Log</span></button>
@@ -698,7 +1067,11 @@
                                 </button>
                                 <button type="button" class="role-card" data-role="authority">
                                     <i class="fa-solid fa-shield-halved"></i>
-                                    <span data-i18n="role_authority">AUTHORITY</span>
+                                    <span data-i18n="role_authority">CORPORATOR</span>
+                                </button>
+                                <button type="button" class="role-card" data-role="higher_authority">
+                                    <i class="fa-solid fa-landmark"></i>
+                                    <span data-i18n="role_higher_authority">HIGHER AUTH</span>
                                 </button>
                                 <button type="button" class="role-card" data-role="journalist">
                                     <i class="fa-solid fa-newspaper"></i>
@@ -746,14 +1119,18 @@
                     
                     <div class="form-group" style="margin-bottom: 16px;">
                         <label class="uppercase-label" data-i18n="choose_role_login">Choose Role</label>
-                        <div class="role-selector-row login-role-selector">
+                        <div class="role-selector-row login-role-selector" role="group" aria-label="Choose Role">
                             <button type="button" class="role-card active" data-login-role="citizen">
                                 <i class="fa-solid fa-user"></i>
                                 <span data-i18n="role_citizen">CITIZEN</span>
                             </button>
                             <button type="button" class="role-card" data-login-role="authority">
                                 <i class="fa-solid fa-shield-halved"></i>
-                                <span data-i18n="role_authority">AUTHORITY</span>
+                                <span data-i18n="role_authority">CORPORATOR</span>
+                            </button>
+                            <button type="button" class="role-card" data-login-role="higher_authority">
+                                <i class="fa-solid fa-landmark"></i>
+                                <span data-i18n="role_higher_authority">HIGHER AUTH</span>
                             </button>
                             <button type="button" class="role-card" data-login-role="worker">
                                 <i class="fa-solid fa-helmet-safety"></i>
@@ -809,6 +1186,12 @@
                             <span data-i18n="dont_have_account">Don't have an account?</span> <span id="link-go-to-signup" class="switch-link" data-i18n="sign_up_link">Sign up</span>
                         </div>
                         
+                        <div style="text-align: center; margin-top: 10px;">
+                            <button type="button" id="btn-continue-guest" style="background: none; border: none; color: #94a3b8; font-size: 0.82rem; cursor: pointer; text-decoration: underline; padding: 4px 8px;">
+                                <i class="fa-solid fa-arrow-right"></i> <span data-i18n="continue_as_guest">Continue as Guest Citizen</span>
+                            </button>
+                        </div>
+                        
                         <div style="text-align: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08);">
                             <a href="/admin" target="_blank" style="color: #a5b4fc; font-size: 0.88rem; text-decoration: none; font-weight: 600;">
                                 <i class="fa-solid fa-user-shield"></i> <span data-i18n="go_to_admin_portal">Go to Municipal Admin Portal &rarr;</span>
@@ -820,6 +1203,333 @@
                 <div class="auth-error-banner hidden" id="auth-error-msg">
                     <i class="fa-solid fa-triangle-exclamation"></i>
                     <span id="auth-error-text" data-i18n="auth_error_default">Incorrect credentials. Please try again.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- IN-APP NOTIFICATIONS MODAL -->
+        <div id="notification-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 580px; width: 92%; max-height: 80vh; display: flex; flex-direction: column;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-bell text-accent-indigo" style="font-size: 1.25rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0; font-size: 1.15rem;" data-i18n="notif_center_title">Notifications Center</h3>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <button id="btn-mark-all-notifications-read" class="btn-small" style="font-size: 0.78rem; padding: 4px 10px; background: rgba(99,102,241,0.2); border: 1px solid #6366f1; color: #c7d2fe; border-radius: 6px; cursor: pointer;">
+                            <i class="fa-solid fa-check-double"></i> <span data-i18n="notif_mark_all_read">Mark all read</span>
+                        </button>
+                        <button class="btn-close-modal" id="btn-close-notification-modal">&times;</button>
+                    </div>
+                </div>
+                <div class="modal-body" style="overflow-y: auto; flex: 1; padding-right: 4px;">
+                    <div id="notifications-list" style="display: flex; flex-direction: column; gap: 10px;">
+                        <p class="empty-table-message" data-i18n="loading_notifications"><i class="fa-solid fa-spinner fa-spin"></i> Loading notifications...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- USER PROFILE MODAL -->
+        <div id="profile-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 500px; width: 92%;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-circle-user text-accent-teal" style="font-size: 1.3rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0;" data-i18n="user_profile_title">User Profile</h3>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-profile-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 20px; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 10px; border: 1px solid var(--panel-border);">
+                        <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-indigo), var(--accent-teal)); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 700; color: #fff;" id="profile-avatar-initials">U</div>
+                        <div>
+                            <h4 id="profile-display-name" style="margin: 0; font-size: 1.05rem;">User Name</h4>
+                            <p id="profile-display-role" style="margin: 2px 0 0 0; font-size: 0.82rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Role: Citizen</p>
+                        </div>
+                    </div>
+                    <form id="profile-form">
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_full_name">Full Name</label>
+                            <input type="text" id="profile-name-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_email_readonly">Email Address (Read-only)</label>
+                            <input type="email" id="profile-email-input" disabled style="opacity: 0.6; cursor: not-allowed;">
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_contact_phone">Contact Phone</label>
+                            <input type="tel" id="profile-phone-input" placeholder="+91 9876543210">
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_assigned_ward">Assigned Ward</label>
+                            <input type="text" id="profile-ward-input" disabled style="opacity: 0.6; cursor: not-allowed;">
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_new_password_hint">New Password (Leave blank to keep current)</label>
+                            <input type="password" id="profile-password-input" placeholder="••••••••">
+                        </div>
+                        <button type="submit" class="btn-submit-blue" id="btn-save-profile" data-i18n="btn_save_profile">Save Profile</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- CITIZEN VERIFICATION ACCEPT & RATE MODAL -->
+        <div id="verify-accept-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 480px; width: 92%;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-circle-check text-accent-emerald" style="font-size: 1.3rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0;" data-i18n="accept_resolution_title">Accept Resolution & Rate</h3>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-verify-accept-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px;" data-i18n="accept_resolution_desc">
+                        Confirm that the municipal team has satisfactorily resolved your reported issue. Please rate the quality of work performed.
+                    </p>
+                    <form id="verify-accept-form">
+                        <input type="hidden" id="verify-accept-complaint-id">
+                        <div class="form-group" style="text-align: center; margin-bottom: 20px;">
+                            <label class="uppercase-label" style="display: block; margin-bottom: 8px;" data-i18n="lbl_satisfaction_rating">Satisfaction Rating (1 to 5 Stars)</label>
+                            <div class="star-rating-picker" id="star-rating-picker" style="display: flex; justify-content: center; gap: 10px; font-size: 1.8rem; cursor: pointer;">
+                                <i class="fa-solid fa-star star-item" data-value="1" style="color: #f59e0b;"></i>
+                                <i class="fa-solid fa-star star-item" data-value="2" style="color: #f59e0b;"></i>
+                                <i class="fa-solid fa-star star-item" data-value="3" style="color: #f59e0b;"></i>
+                                <i class="fa-solid fa-star star-item" data-value="4" style="color: #f59e0b;"></i>
+                                <i class="fa-solid fa-star star-item" data-value="5" style="color: #f59e0b;"></i>
+                            </div>
+                            <input type="hidden" id="verify-rating-value" value="5">
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_citizen_feedback">Citizen Feedback & Comments (Optional)</label>
+                            <textarea id="verify-feedback-input" rows="3" data-i18n-placeholder="feedback_placeholder" placeholder="Share your experience with the resolution quality..."></textarea>
+                        </div>
+                        <button type="submit" class="btn-submit btn-emerald-submit" style="width: 100%;"><i class="fa-solid fa-check-circle"></i> <span data-i18n="btn_confirm_close">Confirm Resolution & Close Issue</span></button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- CITIZEN REJECT & REOPEN MODAL -->
+        <div id="verify-reject-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 480px; width: 92%;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-rotate-left text-priority-high" style="font-size: 1.3rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0;" data-i18n="reject_resolution_title">Reject Resolution & Reopen</h3>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-verify-reject-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px;" data-i18n="reject_resolution_desc">
+                        If the work is incomplete or substandard, provide a clear explanation. This complaint will immediately be reopened and escalated.
+                    </p>
+                    <form id="verify-reject-form">
+                        <input type="hidden" id="verify-reject-complaint-id">
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_reopen_reason">Mandatory Reopening Reason <span style="color: #f43f5e;">*</span></label>
+                            <textarea id="reopen-reason-input" rows="4" data-i18n-placeholder="reopen_placeholder" placeholder="Explain why the resolution is insufficient (e.g., 'Only half the pothole was filled', 'Garbage left on pavement')..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn-submit" style="width: 100%; background: linear-gradient(135deg, #e11d48, #be123c); border-color: #f43f5e;"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="btn_confirm_reopen">Reject Resolution & Reopen Issue</span></button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- AUTHORITY REJECTION MODAL -->
+        <div id="authority-reject-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 480px; width: 92%;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-ban text-priority-high" style="font-size: 1.3rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0;" data-i18n="authority_reject_title">Reject Complaint</h3>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-authority-reject-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px;" data-i18n="authority_reject_desc">
+                        Specify the formal reason for rejecting this civic report. The citizen will be notified with this explanation.
+                    </p>
+                    <form id="authority-reject-form">
+                        <input type="hidden" id="authority-reject-complaint-id">
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_rejection_reason">Rejection Reason <span style="color: #f43f5e;">*</span></label>
+                            <textarea id="authority-reject-reason-input" rows="4" data-i18n-placeholder="reject_placeholder" placeholder="State why this report cannot be addressed (e.g. 'Private property jurisdiction', 'Duplicate submission COMP-1024', 'Invalid photo evidence')..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn-submit" style="width: 100%; background: linear-gradient(135deg, #e11d48, #be123c); border-color: #f43f5e;"><i class="fa-solid fa-ban"></i> <span data-i18n="btn_confirm_rejection">Confirm Rejection</span></button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- WORKER EVIDENCE PHOTO UPLOAD MODAL -->
+        <div id="worker-photo-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 480px; width: 92%;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-camera text-accent-teal" style="font-size: 1.3rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0;" data-i18n="worker_photo_title">Upload Work Evidence Photo</h3>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-worker-photo-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="worker-photo-form">
+                        <input type="hidden" id="worker-photo-complaint-id">
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_evidence_stage">Evidence Stage</label>
+                            <select id="worker-photo-stage" required>
+                                <option value="before" data-i18n="stage_before_option">Before-Work Photo (On-site Arrival)</option>
+                                <option value="progress" data-i18n="stage_progress_option">Work In Progress Photo</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_photo_file">Photo File</label>
+                            <div class="file-drop-area">
+                                <i class="fa-solid fa-image"></i>
+                                <span id="worker-photo-filename-label" data-i18n="choose_photo_device">Choose photo from device...</span>
+                                <input type="file" id="worker-photo-file" accept="image/*" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_photo_caption">Notes / Caption (Optional)</label>
+                            <input type="text" id="worker-photo-caption" data-i18n-placeholder="caption_placeholder" placeholder="E.g., Site cleared, materials arrived...">
+                        </div>
+                        <button type="submit" class="btn-submit-blue" style="width: 100%;"><i class="fa-solid fa-cloud-arrow-up"></i> <span data-i18n="btn_upload_evidence">Upload Evidence Photo</span></button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- CORPORATOR SITE INSPECTION MODAL -->
+        <div id="inspection-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 500px; width: 92%;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-clipboard-check text-accent-indigo" style="font-size: 1.3rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0;" data-i18n="inspection_title">Site Inspection Verification</h3>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-inspection-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px;" data-i18n="inspection_desc">
+                        Ward corporators can record physical site inspection visits and upload on-site verification photos.
+                    </p>
+                    <form id="inspection-form">
+                        <input type="hidden" id="inspection-complaint-id">
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_inspection_photo">Inspection Photo (Optional)</label>
+                            <div class="file-drop-area">
+                                <i class="fa-solid fa-camera"></i>
+                                <span id="inspection-photo-label" data-i18n="choose_inspection_photo">Choose inspection proof photo...</span>
+                                <input type="file" id="inspection-image-file" accept="image/*">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_inspection_notes">Inspection Findings & Notes <span style="color: #f43f5e;">*</span></label>
+                            <textarea id="inspection-notes-input" rows="4" data-i18n-placeholder="inspection_notes_placeholder" placeholder="Detail your physical inspection observations..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn-submit-blue" style="width: 100%;"><i class="fa-solid fa-save"></i> <span data-i18n="btn_submit_inspection">Submit Inspection Record</span></button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- HIGHER AUTHORITY REASSIGN MODAL -->
+        <div id="reassign-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 500px; width: 92%;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-arrows-split-up-and-left text-accent-indigo" style="font-size: 1.3rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0;" data-i18n="reassign_title">Reassign Civic Issue</h3>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-reassign-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px;" data-i18n="reassign_desc">
+                        Override ward jurisdiction or assign to an alternative municipal dispatch worker.
+                    </p>
+                    <form id="reassign-form">
+                        <input type="hidden" id="reassign-complaint-id">
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_assign_ward">Assign to Ward</label>
+                            <select id="reassign-ward-select" required>
+                                <option value="ward_1">Ward 1 - Central Zone</option>
+                                <option value="ward_2">Ward 2 - Northern Zone</option>
+                                <option value="ward_3">Ward 3 - Southern Zone</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_assign_worker">Assign to Worker</label>
+                            <select id="reassign-worker-select" required>
+                                <option value="" data-i18n="choose_dispatch_worker">-- Choose Dispatch Worker --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_reassign_reason">Reason for Reassignment</label>
+                            <textarea id="reassign-reason-input" rows="3" data-i18n-placeholder="reassign_reason_placeholder" placeholder="State reason for administrative reallocation..."></textarea>
+                        </div>
+                        <button type="submit" class="btn-submit-blue" style="width: 100%;"><i class="fa-solid fa-check"></i> <span data-i18n="btn_confirm_reassign">Reassign Issue</span></button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- HIGHER AUTHORITY DIRECTIVE / NOTICE MODAL -->
+        <div id="admin-notice-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 500px; width: 92%;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-file-signature text-accent-amber" style="font-size: 1.3rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0;" data-i18n="admin_notice_title">Issue Administrative Notice</h3>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-admin-notice-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px;" data-i18n="admin_notice_desc">
+                        Send an urgent executive directive or show-cause notice to the assigned corporator and dispatch worker.
+                    </p>
+                    <form id="admin-notice-form">
+                        <input type="hidden" id="admin-notice-complaint-id">
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_notice_type">Notice Type</label>
+                            <select id="admin-notice-type" required>
+                                <option value="SLA Breach Warning" data-i18n="opt_sla_warning">SLA Breach Warning</option>
+                                <option value="Immediate Action Directive" data-i18n="opt_immediate_directive">Immediate Action Directive</option>
+                                <option value="Show Cause Notice" data-i18n="opt_show_cause">Show Cause Notice</option>
+                                <option value="Quality Rectification Order" data-i18n="opt_quality_order">Quality Rectification Order</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="uppercase-label" data-i18n="lbl_directive_message">Directive Message <span style="color: #f43f5e;">*</span></label>
+                            <textarea id="admin-notice-message" rows="4" data-i18n-placeholder="directive_placeholder" placeholder="Enter formal instructions or explanation required..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn-submit" style="width: 100%; background: linear-gradient(135deg, #d97706, #b45309); border-color: #f59e0b;"><i class="fa-solid fa-paper-plane"></i> <span data-i18n="btn_issue_directive">Issue Administrative Directive</span></button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- COMPLAINT DISCUSSION / COMMENTS MODAL -->
+        <div id="comments-modal" class="modal-overlay hidden" style="z-index: 100000;">
+            <div class="glass-card modal-content" style="max-width: 580px; width: 92%; max-height: 85vh; display: flex; flex-direction: column;">
+                <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <i class="fa-solid fa-comments text-accent-indigo" style="font-size: 1.25rem;"></i>
+                        <h3 style="font-family: var(--font-heading); margin: 0; font-size: 1.15rem;"><span data-i18n="discussion_thread_title">Discussion Thread</span>: <span id="comments-modal-complaint-id">COMP-XXXX</span></h3>
+                    </div>
+                    <button class="btn-close-modal" id="btn-close-comments-modal">&times;</button>
+                </div>
+                <div class="modal-body" style="overflow-y: auto; flex: 1; padding-right: 4px; display: flex; flex-direction: column; gap: 12px;">
+                    <div id="modal-comments-list" style="display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 150px; max-height: 350px; overflow-y: auto;">
+                        <p class="empty-table-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading discussion...</p>
+                    </div>
+                    <hr class="modal-separator" style="margin: 8px 0;">
+                    <form id="modal-new-comment-form" style="display: flex; flex-direction: column; gap: 8px;">
+                        <textarea id="modal-new-comment-input" rows="3" data-i18n-placeholder="discussion_placeholder" placeholder="Post an official note or citizen response..." required style="padding: 10px; font-size: 0.88rem; border-radius: 8px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.25); color: var(--text-primary);"></textarea>
+                        <button type="submit" class="btn-submit-blue" style="align-self: flex-end; padding: 8px 18px; font-size: 0.85rem;"><i class="fa-solid fa-paper-plane"></i> <span data-i18n="btn_post_comment">Post Comment</span></button>
+                    </form>
                 </div>
             </div>
         </div>

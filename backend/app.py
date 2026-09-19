@@ -68,7 +68,9 @@ def create_app(config=None):
     with app.app_context():
         try:
             db.create_all()
-            print("[Database] Successfully connected and initialized Neon PostgreSQL database.")
+            from models import auto_migrate_db
+            auto_migrate_db(db)
+            print("[Database] Successfully connected and initialized database.")
             # Auto-seed initial demo accounts if database is fresh/empty
             if User.query.count() == 0:
                 print("[Database Seed] Seeding default demo accounts into database...")
@@ -76,7 +78,8 @@ def create_app(config=None):
                     User(name="Supervisor Suresh", role="authority", contact="+919876543210", ward="ward_1", gmail="suresh@gmail.com", password="password"),
                     User(name="Worker Ramesh", role="worker", contact="+919876543211", ward="ward_1", gmail="ramesh@gmail.com", password="password"),
                     User(name="Citizen Anita", role="citizen", contact="+919876543212", ward="ward_1", gmail="anita@gmail.com", password="password"),
-                    User(name="Journalist Press", role="journalist", contact="+919876543213", ward="ward_1", gmail="journalist@gmail.com", password="password")
+                    User(name="Journalist Press", role="journalist", contact="+919876543213", ward="ward_1", gmail="journalist@gmail.com", password="password"),
+                    User(name="Commissioner Rao", role="higher_authority", contact="+919876543214", ward="all", gmail="commissioner@smartcivic.ai", password="password", approval_status="approved", secret_key="AUTH-HIGH-2026")
                 ]
                 db.session.add_all(demo_users)
                 db.session.commit()

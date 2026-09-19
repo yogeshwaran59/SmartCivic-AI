@@ -8,6 +8,31 @@ const API_BASE = (window.location.origin && (window.location.origin.includes(':5
 let activeTab = 'citizen-portal';
 let currentUser = null; // Object containing logged in user details
 
+// Automatically attach X-User-Id and credentials to backend requests
+const _nativeFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+    options = options || {};
+    const urlStr = typeof url === 'string' ? url : (url.url || '');
+    const isBackendCall = urlStr.startsWith('/') || urlStr.startsWith(API_BASE) || (window.location && urlStr.startsWith(window.location.origin));
+    
+    if (isBackendCall) {
+        options.credentials = options.credentials || 'include';
+        if (currentUser && currentUser.id) {
+            options.headers = options.headers || {};
+            if (options.headers instanceof Headers) {
+                if (!options.headers.has('X-User-Id')) {
+                    options.headers.set('X-User-Id', currentUser.id.toString());
+                }
+            } else if (Array.isArray(options.headers)) {
+                options.headers.push(['X-User-Id', currentUser.id.toString()]);
+            } else {
+                options.headers['X-User-Id'] = currentUser.id.toString();
+            }
+        }
+    }
+    return _nativeFetch(url, options);
+};
+
 // Maps
 let pickerMap = null;
 let pickerMarker = null;
@@ -37,6 +62,36 @@ let cachedTrackData = null;
 let currentNavData = null;
 let cachedCategoriesData = null;
 let publishedArticlesList = [];
+let cachedHAComplaints = [];
+let cachedHALeaderboard = [];
+let cachedHALogs = [];
+let cachedMyComplaints = [];
+
+// Hugging Face AI Multilingual Translation Helper
+async function translateTextWithHF(text, targetLang, sourceLang = 'auto') {
+    if (!text || !text.toString().trim()) {
+        return { success: true, translated_text: text, source_lang: targetLang };
+    }
+    const currentUiLang = targetLang || (window.getCurrentLang ? getCurrentLang() : 'en');
+    try {
+        const res = await fetch(`${API_BASE}/api/ai/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: text.toString().trim(),
+                target_lang: currentUiLang,
+                source_lang: sourceLang
+            })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        return data;
+    } catch (err) {
+        console.warn('Hugging Face translation notice:', err);
+        return { success: false, translated_text: text, source_lang: 'unknown', error: err.message };
+    }
+}
+window.translateTextWithHF = translateTextWithHF;
 
 
 let userCurrentLat = 12.971598;
@@ -128,6 +183,31 @@ window.addEventListener('languageChanged', (e) => {
             currentNavData.complaintId
         );
     }
+
+    // 8. Re-render Higher Authority oversight table if on HA tab
+    if (activeTab === 'higher-authority-dashboard') {
+        if (cachedHAComplaints && cachedHAComplaints.length > 0) {
+            renderHigherAuthorityTable(cachedHAComplaints);
+        } else {
+            loadHigherAuthorityData();
+        }
+    }
+
+    // 9. Re-render citizen personal submitted complaints
+    if (currentUser && currentUser.role === 'citizen') {
+        loadCitizenMyComplaints();
+    }
+
+    // 10. Re-render notifications list if modal is open
+    const notifModal = document.getElementById('notification-modal');
+    if (notifModal && !notifModal.classList.contains('hidden')) {
+        pollNotifications(true);
+    }
+
+    // 11. Re-render active public tracker discussion comments if tracked
+    if (currentlyTrackedId) {
+        loadTrackerComments(currentlyTrackedId);
+    }
 });
 
 function updateUserBanner() {
@@ -148,18 +228,24 @@ document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initForms();
     initJournalistEvents();
+    initEnhancedCivicFeatures();
     
-    // Start auto-refreshing dashboard data every 5 seconds (to fetch new IVR calls & worker assignments too!)
+    // Start auto-refreshing dashboard data every 5 seconds
     autoRefreshTimer = setInterval(() => {
         if (currentUser && currentUser.role === 'authority' && activeTab === 'authority-dashboard') {
             loadDashboardData();
+        } else if (currentUser && (currentUser.role === 'higher_authority' || currentUser.role === 'admin') && activeTab === 'higher-authority-dashboard') {
+            loadHigherAuthorityData();
         } else if (currentUser && currentUser.role === 'worker' && activeTab === 'worker-module') {
             loadWorkerTasks();
         } else if (activeTab === 'citizen-portal') {
             loadCitizenComplaints();
             if (currentlyTrackedId) {
-                trackComplaint(currentlyTrackedId);
+                trackComplaint(currentlyTrackedId, true); // silent refresh
             }
+        }
+        if (currentUser) {
+            pollNotifications();
         }
     }, 5000);
 
@@ -250,6 +336,14 @@ function initAuth() {
         });
     }
 
+    // Continue as Guest Citizen Trigger
+    const btnContinueGuest = document.getElementById('btn-continue-guest');
+    if (btnContinueGuest) {
+        btnContinueGuest.addEventListener('click', () => {
+            if (authModal) authModal.classList.add('hidden');
+        });
+    }
+
     // Open Auth Modal via Header Trigger
     const loginTriggerBtn = document.getElementById('btn-login-trigger');
     if (loginTriggerBtn) {
@@ -269,7 +363,7 @@ function initAuth() {
             const chosenRole = card.getAttribute('data-role');
             if (signupRoleInput) signupRoleInput.value = chosenRole;
             if (authNotice) {
-                if (chosenRole === 'authority') {
+                if (chosenRole === 'authority' || chosenRole === 'higher_authority') {
                     authNotice.classList.remove('hidden');
                 } else {
                     authNotice.classList.add('hidden');
@@ -292,7 +386,7 @@ function initAuth() {
             const role = card.getAttribute('data-login-role');
             if (loginRoleInput) loginRoleInput.value = role;
 
-            if (role === 'authority') {
+            if (role === 'authority' || role === 'higher_authority') {
                 if (secretKeyGroup) secretKeyGroup.classList.remove('hidden');
                 if (authorityAlert) authorityAlert.classList.remove('hidden');
                 if (secretKeyInput) {
@@ -327,7 +421,7 @@ function initAuth() {
             const secret_key = keyEl ? keyEl.value.trim() : '';
             const selectedRole = loginRoleInput ? loginRoleInput.value : 'citizen';
 
-            if (selectedRole === 'authority' && !secret_key) {
+            if ((selectedRole === 'authority' || selectedRole === 'higher_authority') && !secret_key) {
                 if (errorText) errorText.textContent = 'Secret Authorization Key is required for Authority login. Please check your Gmail.';
                 if (errorMsg) errorMsg.classList.remove('hidden');
                 return;
@@ -388,7 +482,7 @@ function initAuth() {
                 return data;
             })
             .then(user => {
-                if (user.role === 'authority' && user.approval_status === 'pending_approval') {
+                if ((user.role === 'authority' || user.role === 'higher_authority') && user.approval_status === 'pending_approval') {
                     showToast('Application Submitted', 'Authority registration is awaiting Municipal Admin approval. Your Secret Key will be emailed to your Gmail upon approval.', 'info');
                     // Switch to login tab
                     const signupP = document.getElementById('signup-panel');
@@ -455,20 +549,26 @@ function checkSession() {
         // Redirect user to their role dashboard
         enforceRoleRestrictions();
         fetchWorkers();
+        pollNotifications();
     } else {
         currentUser = null;
-        document.body.classList.add('landing-page');
+        document.body.classList.remove('landing-page');
         authModal.classList.remove('hidden');
         if (loginPanel) loginPanel.classList.remove('hidden');
         if (signupPanel) signupPanel.classList.add('hidden');
         banner.classList.add('hidden');
-        if (loginTriggerBtn) loginTriggerBtn.classList.add('hidden');
-        if (closeAuthBtn) closeAuthBtn.style.display = 'none';
+        if (loginTriggerBtn) loginTriggerBtn.classList.remove('hidden');
+        if (closeAuthBtn) closeAuthBtn.style.display = 'block';
         
-        document.getElementById('btn-citizen').style.display = 'none';
+        document.getElementById('btn-citizen').style.display = 'flex';
         document.getElementById('btn-authority').style.display = 'none';
+        const btnHigherAuth = document.getElementById('btn-higher-authority');
+        if (btnHigherAuth) btnHigherAuth.style.display = 'none';
         document.getElementById('btn-worker').style.display = 'none';
         document.getElementById('btn-journalist').style.display = 'none';
+
+        switchTab('citizen-portal');
+        loadCitizenComplaints();
     }
 }
 
@@ -485,11 +585,13 @@ function clearSession() {
 function enforceRoleRestrictions() {
     const btnCitizen = document.getElementById('btn-citizen');
     const btnAuthority = document.getElementById('btn-authority');
+    const btnHigherAuth = document.getElementById('btn-higher-authority');
     const btnWorker = document.getElementById('btn-worker');
     const btnJournalist = document.getElementById('btn-journalist');
 
     btnCitizen.style.display = 'none';
     btnAuthority.style.display = 'none';
+    if (btnHigherAuth) btnHigherAuth.style.display = 'none';
     btnWorker.style.display = 'none';
     btnJournalist.style.display = 'none';
 
@@ -500,6 +602,11 @@ function enforceRoleRestrictions() {
         btnCitizen.style.display = 'flex';
         btnAuthority.style.display = 'flex';
         switchTab('authority-dashboard');
+    } else if (currentUser.role === 'higher_authority' || currentUser.role === 'admin') {
+        btnCitizen.style.display = 'flex';
+        btnAuthority.style.display = 'flex';
+        if (btnHigherAuth) btnHigherAuth.style.display = 'flex';
+        switchTab('higher-authority-dashboard');
     } else if (currentUser.role === 'worker') {
         btnWorker.style.display = 'flex';
         const valWorkerName = document.getElementById('val-worker-name');
@@ -549,11 +656,15 @@ function switchTab(tabId) {
             if (pickerMap) pickerMap.invalidateSize();
             if (citizenHeatmapMap) citizenHeatmapMap.invalidateSize();
             loadCitizenComplaints();
+            loadCitizenMyComplaints();
             loadHeatmapData();
         } else if (tabId === 'authority-dashboard') {
             if (authorityHeatmapMap) authorityHeatmapMap.invalidateSize();
             loadDashboardData();
+            loadCorporatorPerformance();
             loadHeatmapData();
+        } else if (tabId === 'higher-authority-dashboard') {
+            loadHigherAuthorityData();
         } else if (tabId === 'worker-module') {
             if (workerRouteMap) {
                 workerRouteMap.invalidateSize();
@@ -979,6 +1090,12 @@ function initForms() {
         spinner.classList.remove('hidden');
 
         // Form fields
+        const titleEl = document.getElementById('form-title');
+        const title = titleEl ? titleEl.value.trim() : '';
+        const catPresetEl = document.getElementById('form-category-preset');
+        const categoryPreset = catPresetEl ? catPresetEl.value : '';
+        const prioEl = document.getElementById('form-priority-select');
+        const priorityPreset = prioEl ? prioEl.value : '';
         const description = document.getElementById('form-description').value;
         const latitude = document.getElementById('val-latitude').textContent;
         const longitude = document.getElementById('val-longitude').textContent;
@@ -988,12 +1105,18 @@ function initForms() {
         const image = imageInput.files[0];
 
         const formData = new FormData();
+        if (title) formData.append('title', title);
+        if (categoryPreset) formData.append('category', categoryPreset);
+        if (priorityPreset) formData.append('priority', priorityPreset);
         formData.append('description', description);
         formData.append('latitude', latitude);
         formData.append('longitude', longitude);
         formData.append('contact', contact);
         if (gmail) {
             formData.append('gmail', gmail);
+        }
+        if (currentUser && currentUser.id) {
+            formData.append('citizen_id', currentUser.id);
         }
         if (image) {
             formData.append('image', image);
@@ -1087,15 +1210,20 @@ function initForms() {
         const compId = document.getElementById('modal-hidden-complaint-id').value;
         const workerId = document.getElementById('modal-worker-select').value;
         const priority = document.getElementById('modal-priority-select').value;
+        const deadlineInput = document.getElementById('modal-deadline-input');
+        const deadline = deadlineInput && deadlineInput.value ? deadlineInput.value : null;
+
+        const payload = { status: 'Assigned', assigned_to: workerId, priority: priority };
+        if (deadline) payload.deadline = deadline;
 
         fetch(`${API_BASE}/api/complaints/${compId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'Assigned', assigned_to: workerId, priority: priority })
+            body: JSON.stringify(payload)
         })
         .then(res => res.json())
         .then(data => {
-            showToast('Task Dispatched', `Issue ${compId} assigned successfully.`, 'success');
+            showToast('Task Dispatched', `Issue ${compId} assigned successfully with SLA.`, 'success');
             document.getElementById('assignment-modal').classList.add('hidden');
             loadDashboardData();
         })
@@ -1110,7 +1238,7 @@ function initForms() {
         const photo = document.getElementById('resolve-image').files[0];
 
         const formData = new FormData();
-        formData.append('status', 'Resolved');
+        formData.append('status', 'Completed');
         formData.append('resolution_notes', notes);
         if (photo) {
             formData.append('resolution_image', photo);
@@ -1122,7 +1250,7 @@ function initForms() {
         })
         .then(res => res.json())
         .then(data => {
-            showToast('Job Resolved', `Issue ${compId} resolved & closed.`, 'success');
+            showToast('Work Completed', `Issue ${compId} marked Completed. Citizen notified to verify resolution.`, 'success');
             document.getElementById('resolve-modal').classList.add('hidden');
             document.getElementById('worker-work-area').classList.add('hidden');
             
@@ -1246,7 +1374,136 @@ function renderTrackerDetails(data) {
     trackerResult.classList.remove('hidden');
     
     document.getElementById('track-id').textContent = data.complaint_id;
-    document.getElementById('track-description').textContent = data.description;
+    
+    // Title
+    const titleEl = document.getElementById('track-title');
+    if (titleEl) {
+        titleEl.textContent = data.title || (data.category ? data.category.replace('_', ' ').toUpperCase() : 'Civic Issue');
+    }
+
+    // Set and manage description & HF translation
+    const descEl = document.getElementById('track-description');
+    if (descEl) {
+        descEl.textContent = data._is_translated && data._translated_description ? data._translated_description : data.description;
+    }
+    if (titleEl && data._is_translated && data._translated_title) {
+        titleEl.textContent = data._translated_title;
+    }
+
+    // Setup HF On-Demand Translation for Tracker
+    const btnTrackTranslate = document.getElementById('btn-track-translate');
+    const hfBadge = document.getElementById('track-hf-badge');
+    if (btnTrackTranslate) {
+        if (!data._original_description || data._last_id !== data.complaint_id) {
+            data._original_description = data.description;
+            data._original_title = titleEl ? titleEl.textContent : '';
+            data._is_translated = false;
+            data._last_id = data.complaint_id;
+        }
+
+        // Reset display based on current translation state
+        if (data._is_translated) {
+            if (hfBadge) hfBadge.classList.remove('hidden');
+            btnTrackTranslate.innerHTML = `<i class="fa-solid fa-rotate-left"></i> <span>${window.t ? t('btn_show_original', 'Show Original') : 'Show Original'}</span>`;
+            btnTrackTranslate.style.background = 'rgba(16, 185, 129, 0.15)';
+            btnTrackTranslate.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+            btnTrackTranslate.style.color = '#6ee7b7';
+        } else {
+            if (hfBadge) hfBadge.classList.add('hidden');
+            btnTrackTranslate.innerHTML = `<i class="fa-solid fa-language"></i> <span>${window.t ? t('btn_hf_translate', 'Translate (HF AI)') : 'Translate (HF AI)'}</span>`;
+            btnTrackTranslate.style.background = 'rgba(99, 102, 241, 0.15)';
+            btnTrackTranslate.style.borderColor = 'rgba(99, 102, 241, 0.35)';
+            btnTrackTranslate.style.color = '#c7d2fe';
+        }
+
+        btnTrackTranslate.onclick = async () => {
+            const currentDescEl = document.getElementById('track-description');
+            const currentTitleEl = document.getElementById('track-title');
+            const currentLang = window.getCurrentLang ? getCurrentLang() : 'en';
+
+            if (!data._is_translated) {
+                btnTrackTranslate.disabled = true;
+                btnTrackTranslate.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${window.t ? t('hf_translating', 'Translating with Hugging Face...') : 'Translating...'}</span>`;
+                
+                let translatedDesc = '';
+                let translatedTitle = '';
+
+                if (currentLang === 'en' && data.english_description) {
+                    translatedDesc = data.english_description;
+                    translatedTitle = data.english_title || data._original_title;
+                } else {
+                    const descRes = await translateTextWithHF(data._original_description, currentLang);
+                    translatedDesc = descRes.translated_text || data._original_description;
+                    if (data._original_title) {
+                        const titleRes = await translateTextWithHF(data._original_title, currentLang);
+                        translatedTitle = titleRes.translated_text || data._original_title;
+                    }
+                }
+
+                if (currentDescEl) currentDescEl.textContent = translatedDesc;
+                if (currentTitleEl && translatedTitle) currentTitleEl.textContent = translatedTitle;
+
+                data._translated_description = translatedDesc;
+                data._translated_title = translatedTitle;
+                data._is_translated = true;
+
+                if (hfBadge) hfBadge.classList.remove('hidden');
+                btnTrackTranslate.innerHTML = `<i class="fa-solid fa-rotate-left"></i> <span>${window.t ? t('btn_show_original', 'Show Original') : 'Show Original'}</span>`;
+                btnTrackTranslate.style.background = 'rgba(16, 185, 129, 0.15)';
+                btnTrackTranslate.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                btnTrackTranslate.style.color = '#6ee7b7';
+                btnTrackTranslate.disabled = false;
+            } else {
+                if (currentDescEl) currentDescEl.textContent = data._original_description;
+                if (currentTitleEl) currentTitleEl.textContent = data._original_title;
+
+                data._is_translated = false;
+                if (hfBadge) hfBadge.classList.add('hidden');
+                btnTrackTranslate.innerHTML = `<i class="fa-solid fa-language"></i> <span>${window.t ? t('btn_hf_translate', 'Translate (HF AI)') : 'Translate (HF AI)'}</span>`;
+                btnTrackTranslate.style.background = 'rgba(99, 102, 241, 0.15)';
+                btnTrackTranslate.style.borderColor = 'rgba(99, 102, 241, 0.35)';
+                btnTrackTranslate.style.color = '#c7d2fe';
+            }
+        };
+    }
+
+    // SLA Deadline Badge
+    const slaEl = document.getElementById('track-sla-deadline') || document.getElementById('track-deadline-text');
+    const slaBox = document.getElementById('track-deadline-box');
+    if (slaEl) {
+        if (data.deadline) {
+            const dDate = new Date(data.deadline);
+            slaEl.textContent = `SLA: ${dDate.toLocaleString()}`;
+            if (data.overdue_flag) {
+                if (slaBox) { slaBox.className = 'deadline-badge-box badge-high'; slaBox.classList.remove('hidden'); }
+                slaEl.textContent += ' (OVERDUE)';
+            } else {
+                if (slaBox) { slaBox.className = 'deadline-badge-box'; slaBox.classList.remove('hidden'); }
+            }
+        } else if (slaBox) {
+            slaBox.classList.add('hidden');
+        }
+    }
+
+    // Rejection Banner
+    const rejBanner = document.getElementById('track-rejection-banner');
+    const rejReason = document.getElementById('track-rejection-reason') || document.getElementById('track-rejection-text');
+    if (data.status === 'Rejected' && data.rejection_reason) {
+        if (rejReason) rejReason.textContent = data.rejection_reason;
+        if (rejBanner) rejBanner.classList.remove('hidden');
+    } else if (rejBanner) {
+        rejBanner.classList.add('hidden');
+    }
+
+    // Reopened Banner
+    const reopBanner = document.getElementById('track-reopened-banner');
+    const reopReason = document.getElementById('track-reopened-reason') || document.getElementById('track-reopened-text');
+    if (data.reopen_count > 0 || data.status === 'Reopened') {
+        if (reopReason) reopReason.textContent = `Issue Reopened (${data.reopen_count || 1}x): ${data.reopened_reason || 'Citizen unsatisfied with previous resolution'}`;
+        if (reopBanner) reopBanner.classList.remove('hidden');
+    } else if (reopBanner) {
+        reopBanner.classList.add('hidden');
+    }
     
     // Category Badge
     const catBadge = document.getElementById('track-category');
@@ -1294,11 +1551,128 @@ function renderTrackerDetails(data) {
         imgContainer.classList.add('hidden');
     }
 
+    // Multi-stage Evidence Gallery
+    let hasEvidence = false;
+    const beforeBox = document.getElementById('evidence-before-box');
+    const beforeImg = document.getElementById('evidence-before-img');
+    const beforeTime = document.getElementById('evidence-before-time');
+    if (data.before_image_path) {
+        if (beforeImg) beforeImg.src = `${API_BASE}${data.before_image_path}`;
+        if (beforeTime) beforeTime.textContent = 'Uploaded by Worker on Site';
+        if (beforeBox) beforeBox.classList.remove('hidden');
+        hasEvidence = true;
+    } else if (beforeBox) {
+        beforeBox.classList.add('hidden');
+    }
+
+    const progBox = document.getElementById('evidence-progress-box');
+    const progImg = document.getElementById('evidence-progress-img');
+    const progTime = document.getElementById('evidence-progress-time');
+    if (data.progress_image_path) {
+        if (progImg) progImg.src = `${API_BASE}${data.progress_image_path}`;
+        if (progTime) progTime.textContent = 'In Progress Work';
+        if (progBox) progBox.classList.remove('hidden');
+        hasEvidence = true;
+    } else if (progBox) {
+        progBox.classList.add('hidden');
+    }
+
+    const resBox = document.getElementById('evidence-resolved-box');
+    const resImg = document.getElementById('evidence-resolved-img');
+    const resTime = document.getElementById('evidence-resolved-time');
+    if (data.resolved_image_path) {
+        if (resImg) resImg.src = `${API_BASE}${data.resolved_image_path}`;
+        if (resTime) resTime.textContent = data.completed_at ? new Date(data.completed_at).toLocaleString() : 'Work Completed';
+        if (resBox) resBox.classList.remove('hidden');
+        hasEvidence = true;
+    } else if (resBox) {
+        resBox.classList.add('hidden');
+    }
+
+    const inspBox = document.getElementById('evidence-inspection-box');
+    const inspImg = document.getElementById('evidence-inspection-img');
+    const inspTime = document.getElementById('evidence-inspection-time');
+    const inspNotes = document.getElementById('evidence-inspection-notes');
+    if (data.inspection_image_path || data.inspection_notes) {
+        if (inspImg) {
+            if (data.inspection_image_path) {
+                inspImg.src = `${API_BASE}${data.inspection_image_path}`;
+                inspImg.style.display = 'block';
+            } else {
+                inspImg.style.display = 'none';
+            }
+        }
+        if (inspTime) inspTime.textContent = 'Corporator Site Verification';
+        if (inspNotes) inspNotes.textContent = data.inspection_notes || '';
+        if (inspBox) inspBox.classList.remove('hidden');
+        hasEvidence = true;
+    } else if (inspBox) {
+        inspBox.classList.add('hidden');
+    }
+
+    const evidenceSection = document.getElementById('track-evidence-section');
+    if (evidenceSection) {
+        if (hasEvidence) evidenceSection.classList.remove('hidden');
+        else evidenceSection.classList.add('hidden');
+    }
+
+    // Citizen Verification Action Box
+    const verifBox = document.getElementById('track-citizen-verification-box') || document.getElementById('track-verification-box');
+    const outerVerifBox = document.getElementById('track-verification-box');
+    if (verifBox) {
+        if (data.status === 'Completed') {
+            if (outerVerifBox) outerVerifBox.classList.remove('hidden');
+            verifBox.classList.remove('hidden');
+            verifBox.innerHTML = `
+                <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); padding: 16px; border-radius: 12px;">
+                    <h4 style="color: #10b981; margin: 0 0 6px 0; font-size: 1.05rem;"><i class="fa-solid fa-bell"></i> Municipal Work Completed - Citizen Verification Needed</h4>
+                    <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 12px;">The municipal worker has completed the repair and submitted photographic proof above. Please inspect and confirm whether the work meets your satisfaction.</p>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button id="btn-open-verify-accept" class="btn-submit btn-emerald-submit" style="padding: 8px 16px; font-size: 0.85rem;"><i class="fa-solid fa-check"></i> Accept Resolution & Rate</button>
+                        <button id="btn-open-verify-reject" class="btn-submit" style="padding: 8px 16px; font-size: 0.85rem; background: rgba(244,63,94,0.2); border-color: #f43f5e; color: #fca5a5;"><i class="fa-solid fa-rotate-left"></i> Reject Resolution & Reopen</button>
+                    </div>
+                </div>
+            `;
+            const btnAccept = document.getElementById('btn-open-verify-accept');
+            const btnReject = document.getElementById('btn-open-verify-reject');
+            if (btnAccept) {
+                btnAccept.onclick = () => {
+                    document.getElementById('verify-accept-complaint-id').value = data.complaint_id;
+                    document.getElementById('verify-accept-modal').classList.remove('hidden');
+                };
+            }
+            if (btnReject) {
+                btnReject.onclick = () => {
+                    document.getElementById('verify-reject-complaint-id').value = data.complaint_id;
+                    document.getElementById('verify-reject-modal').classList.remove('hidden');
+                };
+            }
+        } else if ((data.status === 'Closed' || data.status === 'Resolved') && data.citizen_rating) {
+            if (outerVerifBox) outerVerifBox.classList.remove('hidden');
+            verifBox.classList.remove('hidden');
+            verifBox.innerHTML = `
+                <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); padding: 14px; border-radius: 10px;">
+                    <h4 style="color: #10b981; margin: 0 0 6px 0; font-size: 0.95rem;"><i class="fa-solid fa-check-circle"></i> Citizen Verified & Closed</h4>
+                    <p style="margin: 0; font-size: 0.88rem; color: var(--text-primary);">
+                        Rating: <span style="color: #f59e0b; font-size: 1.1rem;">${'★'.repeat(data.citizen_rating)}${'☆'.repeat(5 - data.citizen_rating)}</span> (${data.citizen_rating}/5)
+                    </p>
+                    ${data.citizen_feedback ? `<p style="margin-top: 6px; font-size: 0.84rem; color: var(--text-secondary); font-style: italic;">"${data.citizen_feedback}"</p>` : ''}
+                </div>
+            `;
+        } else {
+            verifBox.classList.add('hidden');
+            if (outerVerifBox) outerVerifBox.classList.add('hidden');
+        }
+    }
+
     // Escalated flag banner
     const escBanner = document.getElementById('track-escalation-banner');
-    if (data.escalation_flag) {
-        escBanner.classList.remove('hidden');
-    } else {
+    if (data.escalation_flag || data.escalation_level > 0) {
+        if (escBanner) {
+            escBanner.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Escalated:</strong> Under Tier ${data.escalation_level || 1} supervisory oversight.`;
+            escBanner.classList.remove('hidden');
+        }
+    } else if (escBanner) {
         escBanner.classList.add('hidden');
     }
 
@@ -1331,6 +1705,9 @@ function renderTrackerDetails(data) {
         activeElem.classList.remove('completed');
         activeElem.classList.add('active');
     }
+
+    // Load comments thread
+    loadTrackerComments(data.complaint_id);
 }
 
 function loadDashboardData() {
@@ -1343,6 +1720,10 @@ function loadDashboardData() {
         document.getElementById('stat-pending-issues').textContent = data.pending;
         document.getElementById('stat-resolved-issues').textContent = data.resolved;
         document.getElementById('stat-escalated-issues').textContent = data.escalated;
+        const avgEl = document.getElementById('stat-avg-resolution-time');
+        if (avgEl) avgEl.textContent = `${data.avg_resolution_hours || 0}h`;
+        const overdueEl = document.getElementById('stat-overdue-count');
+        if (overdueEl) overdueEl.textContent = data.overdue_count || 0;
 
         renderCharts(data.categories, data.wards);
     })
@@ -1378,22 +1759,40 @@ function loadDashboardData() {
     .catch(err => console.error(err));
 }
 
-// Render complaints in table with complete localization
+// Render complaints in table with complete localization and full civic actions
 function renderComplaintsTable(complaints) {
     const tbody = document.getElementById('complaints-table-body');
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    if (complaints.length === 0) {
+    const searchInput = document.getElementById('filter-search-authority');
+    const searchVal = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    const catInput = document.getElementById('filter-category-authority');
+    const catVal = catInput ? catInput.value : '';
+
+    let list = complaints;
+    if (searchVal) {
+        list = list.filter(c => 
+            c.complaint_id.toLowerCase().includes(searchVal) ||
+            (c.title && c.title.toLowerCase().includes(searchVal)) ||
+            (c.description && c.description.toLowerCase().includes(searchVal))
+        );
+    }
+    if (catVal) {
+        list = list.filter(c => c.category === catVal);
+    }
+
+    if (list.length === 0) {
         const emptyMsg = window.t ? t('no_matching_complaints', 'No complaints match the active filters.') : 'No complaints match the active filters.';
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-table-message"><i class="fa-solid fa-folder-open"></i> ${emptyMsg}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-table-message"><i class="fa-solid fa-folder-open"></i> ${emptyMsg}</td></tr>`;
         return;
     }
 
-    complaints.forEach(c => {
+    list.forEach(c => {
         const row = document.createElement('tr');
         
         const formattedDate = window.formatDate ? formatDate(c.created_at) : new Date(c.created_at).toLocaleString();
+        const slaDeadline = c.deadline ? (window.formatDate ? formatDate(c.deadline) : new Date(c.deadline).toLocaleDateString()) : '-';
 
         const prioClass = `badge-${c.priority.toLowerCase()}`;
         const statusClass = `badge-${c.status.replace(' ', '')}`;
@@ -1401,31 +1800,52 @@ function renderComplaintsTable(complaints) {
         const catText = window.getCategoryTranslation ? getCategoryTranslation(c.category) : c.category.replace('_', ' ');
         const prioText = window.getPriorityTranslation ? getPriorityTranslation(c.priority) : c.priority;
         const statusText = window.getStatusTranslation ? getStatusTranslation(c.status) : c.status;
-        const navText = window.t ? t('navigate', 'Navigate') : 'Navigate';
-        const assignText = window.t ? t('assign', 'Assign') : 'Assign';
-        const closeText = window.t ? t('close', 'Close') : 'Close';
         const unassignedText = window.t ? t('unassigned', 'Unassigned') : 'Unassigned';
 
-        let navigateHtml = `<button class="btn-action-assign" onclick="triggerNavigation(${c.latitude}, ${c.longitude}, '${c.complaint_id}')" style="background: var(--accent-indigo-glow); color: var(--accent-indigo);"><i class="fa-solid fa-location-arrow"></i> ${navText}</button>`;
+        let navigateHtml = `<button class="btn-action-assign" onclick="triggerNavigation(${c.latitude}, ${c.longitude}, '${c.complaint_id}')" style="background: var(--accent-indigo-glow); color: var(--accent-indigo); padding: 4px 8px; font-size: 0.78rem;" title="Navigate"><i class="fa-solid fa-location-arrow"></i></button>`;
 
         let actionHtml = '';
         if (c.status === 'Submitted') {
-            actionHtml = `<button class="btn-action-assign" onclick="openAssignmentModal('${c.complaint_id}')"><i class="fa-solid fa-user-plus"></i> ${assignText}</button>`;
-        } else if (c.status === 'Resolved') {
-            actionHtml = `<button class="btn-action-close" onclick="closeComplaint('${c.complaint_id}')"><i class="fa-solid fa-lock"></i> ${closeText}</button>`;
+            actionHtml = `
+                <button class="btn-action-assign" onclick="verifyComplaint('${c.complaint_id}')" style="background: rgba(16,185,129,0.2); border: 1px solid #10b981; color: #6ee7b7; padding: 4px 8px; font-size: 0.78rem;" title="Verify Report"><i class="fa-solid fa-check"></i> Verify</button>
+                <button class="btn-action-assign" onclick="openAuthorityRejectModal('${c.complaint_id}')" style="background: rgba(244,63,94,0.2); border: 1px solid #f43f5e; color: #fca5a5; padding: 4px 8px; font-size: 0.78rem;" title="Reject Report"><i class="fa-solid fa-ban"></i></button>
+                <button class="btn-action-assign" onclick="openAssignmentModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.78rem;" title="Assign Worker"><i class="fa-solid fa-user-plus"></i> Assign</button>
+            `;
+        } else if (c.status === 'Verified') {
+            actionHtml = `
+                <button class="btn-action-assign" onclick="openAssignmentModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.78rem;" title="Assign Worker"><i class="fa-solid fa-user-plus"></i> Assign</button>
+                <button class="btn-action-assign" onclick="openAuthorityRejectModal('${c.complaint_id}')" style="background: rgba(244,63,94,0.2); border: 1px solid #f43f5e; color: #fca5a5; padding: 4px 8px; font-size: 0.78rem;" title="Reject"><i class="fa-solid fa-ban"></i></button>
+            `;
+        } else if (c.status === 'Reopened') {
+            actionHtml = `
+                <button class="btn-action-assign" onclick="openAssignmentModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.78rem; background: rgba(245,158,11,0.2); border: 1px solid #f59e0b; color: #fcd34d;" title="Reassign Worker"><i class="fa-solid fa-rotate-left"></i> Reassign</button>
+                <button class="btn-action-assign" onclick="openCommentsModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.78rem;" title="Discussion"><i class="fa-solid fa-comments"></i></button>
+            `;
+        } else if (c.status === 'Completed') {
+            actionHtml = `
+                <button class="btn-action-assign" onclick="closeComplaint('${c.complaint_id}')" style="background: rgba(16,185,129,0.2); border: 1px solid #10b981; color: #6ee7b7; padding: 4px 8px; font-size: 0.78rem;" title="Verify Completion & Close"><i class="fa-solid fa-check-double"></i> Verify & Close</button>
+                <button class="btn-action-assign" onclick="openInspectionModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.78rem; background: rgba(20,184,166,0.2); border: 1px solid #14b8a6; color: #5eead4;" title="Site Inspection"><i class="fa-solid fa-clipboard-check"></i> Inspect</button>
+                <button class="btn-action-assign" onclick="openCommentsModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.78rem;" title="Discussion"><i class="fa-solid fa-comments"></i></button>
+            `;
         } else {
-            actionHtml = `<span class="text-muted"><i class="fa-solid fa-spinner fa-spin"></i> ${statusText}</span>`;
+            actionHtml = `
+                <button class="btn-action-assign" onclick="openInspectionModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.78rem; background: rgba(20,184,166,0.2); border: 1px solid #14b8a6; color: #5eead4;" title="Site Inspection"><i class="fa-solid fa-clipboard-check"></i> Inspect</button>
+                <button class="btn-action-assign" onclick="openCommentsModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.78rem;" title="Discussion"><i class="fa-solid fa-comments"></i></button>
+            `;
         }
 
         row.innerHTML = `
             <td><strong>${c.complaint_id}</strong></td>
             <td><span class="badge">${catText}</span></td>
-            <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.description}</td>
+            <td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${c.description}">
+                ${c.title ? `<strong>${c.title}</strong><br>` : ''}${c.description}
+            </td>
             <td><span class="badge ${prioClass}">${prioText}</span></td>
             <td><span class="badge ${statusClass}">${statusText}</span></td>
             <td>${formattedDate}</td>
+            <td>${c.overdue_flag ? `<span style="color: #f43f5e; font-weight: 700;">${slaDeadline} (Overdue)</span>` : slaDeadline}</td>
             <td>${c.assigned_to_name || `<i class="text-muted">${unassignedText}</i>`}</td>
-            <td><div style="display: flex; gap: 6px; align-items: center;">${actionHtml}${navigateHtml}</div></td>
+            <td><div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">${actionHtml}${navigateHtml}</div></td>
         `;
         tbody.appendChild(row);
     });
@@ -1560,14 +1980,27 @@ function loadWorkerTasks() {
     .catch(err => console.error(err));
 }
 
+let activeWorkerFilter = 'all';
+
 function renderWorkerJobsList(tasks) {
     activeWorkerTasks = tasks;
     const list = document.getElementById('worker-jobs-list');
     if (!list) return;
     list.innerHTML = '';
 
-    if (tasks.length === 0) {
-        const emptyMsg = window.t ? t('no_worker_tasks', 'You have no assigned tasks in your queue!') : 'You have no assigned tasks in your queue!';
+    let displayTasks = tasks;
+    if (activeWorkerFilter !== 'all') {
+        if (activeWorkerFilter === 'In Progress') {
+            displayTasks = tasks.filter(t => t.status === 'In Progress');
+        } else if (activeWorkerFilter === 'Completed') {
+            displayTasks = tasks.filter(t => t.status === 'Completed' || t.status === 'Resolved' || t.status === 'Closed');
+        } else {
+            displayTasks = tasks.filter(t => t.status === activeWorkerFilter);
+        }
+    }
+
+    if (displayTasks.length === 0) {
+        const emptyMsg = window.t ? t('no_worker_tasks', 'No tasks found in this view.') : 'No tasks found in this view.';
         list.innerHTML = `<p class="empty-jobs-message"><i class="fa-solid fa-circle-check text-accent-emerald"></i> ${emptyMsg}</p>`;
         return;
     }
@@ -1576,7 +2009,7 @@ function renderWorkerJobsList(tasks) {
     const assignedLabel = window.t ? t('assigned_date_label', 'Assigned:') : 'Assigned:';
     const navText = window.t ? t('navigate', 'Navigate') : 'Navigate';
 
-    tasks.forEach(task => {
+    displayTasks.forEach(task => {
         const card = document.createElement('div');
         card.className = 'job-card';
         if (activeWorkerTask && activeWorkerTask.complaint_id === task.complaint_id) {
@@ -1647,11 +2080,11 @@ function openWorkerTaskMap(task) {
         btnInProg.disabled = true;
         btnResolve.disabled = false;
         btnResolve.innerHTML = resolveTaskText;
-    } else if (task.status === 'Resolved' || task.status === 'Closed') {
+    } else if (task.status === 'Completed' || task.status === 'Resolved' || task.status === 'Closed') {
         btnInProg.innerHTML = completedText;
         btnInProg.classList.add('btn-emerald-submit');
         btnInProg.disabled = true;
-        btnResolve.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${resolvedStatusText}`;
+        btnResolve.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${task.status === 'Completed' ? 'Completed (Awaiting Verification)' : resolvedStatusText}`;
         btnResolve.classList.add('btn-emerald-submit');
         btnResolve.disabled = true;
     } else {
@@ -2213,12 +2646,20 @@ function renderCitizenComplaintsList(complaints) {
         const prioText = window.getPriorityTranslation ? getPriorityTranslation(c.priority) : c.priority;
         const statusText = window.getStatusTranslation ? getStatusTranslation(c.status) : c.status;
 
+        const titlePart = c.title ? `<strong style="color: var(--text-primary); display: block; margin-bottom: 2px;">${c.title}</strong>` : '';
+        const cardDescId = `card-desc-${c.complaint_id}`;
+
         card.innerHTML = `
             <div class="job-card-header">
                 <h4>${c.complaint_id}</h4>
-                <span class="badge ${prioClass}">${prioText}</span>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <button type="button" class="btn-card-translate" data-id="${c.complaint_id}" style="background: none; border: none; color: var(--accent-indigo); font-size: 0.85rem; cursor: pointer; padding: 2px 4px;" title="Translate with Hugging Face AI">
+                        <i class="fa-solid fa-language"></i>
+                    </button>
+                    <span class="badge ${prioClass}">${prioText}</span>
+                </div>
             </div>
-            <div class="job-card-desc">${c.description}</div>
+            <div class="job-card-desc" id="${cardDescId}">${titlePart}${c.description}</div>
             <div class="job-card-footer" style="margin-bottom: 8px; flex-direction: column; align-items: flex-start; gap: 4px;">
                 <span>${catLabel}: <strong>${catText.toUpperCase()}</strong></span>
                 <span>${statusLabel}: <span class="badge ${statusClass}" style="margin: 0; font-size: 0.8rem; padding: 3px 8px;">${statusText}</span></span>
@@ -2228,7 +2669,1118 @@ function renderCitizenComplaintsList(complaints) {
                 <i class="fa-solid fa-clock-rotate-left"></i> ${viewTimelineText}
             </button>
         `;
+
+        const btnTrans = card.querySelector('.btn-card-translate');
+        if (btnTrans) {
+            let isTrans = false;
+            btnTrans.addEventListener('click', async () => {
+                const descEl = document.getElementById(cardDescId);
+                const curLang = window.getCurrentLang ? getCurrentLang() : 'en';
+                if (!isTrans) {
+                    btnTrans.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+                    let transDesc = c.description;
+                    if (curLang === 'en' && c.english_description) {
+                        transDesc = c.english_description;
+                    } else {
+                        const res = await translateTextWithHF(c.description, curLang);
+                        transDesc = res.translated_text || c.description;
+                    }
+                    if (descEl) descEl.innerHTML = `${titlePart}${transDesc}`;
+                    btnTrans.innerHTML = `<i class="fa-solid fa-rotate-left"></i>`;
+                    btnTrans.style.color = '#10b981';
+                    isTrans = true;
+                } else {
+                    if (descEl) descEl.innerHTML = `${titlePart}${c.description}`;
+                    btnTrans.innerHTML = `<i class="fa-solid fa-language"></i>`;
+                    btnTrans.style.color = 'var(--accent-indigo)';
+                    isTrans = false;
+                }
+            });
+        }
         list.appendChild(card);
     });
 }
+
+// ==========================================
+// ENHANCED CIVIC SYSTEM MANAGEMENT FEATURES
+// ==========================================
+
+let activeCitizenFilter = 'all';
+let cachedNotifications = [];
+
+function initEnhancedCivicFeatures() {
+    // 1. Notifications Center
+    const btnNotif = document.getElementById('btn-header-notif') || document.getElementById('btn-open-notifications');
+    const notifModal = document.getElementById('notification-modal');
+    const btnCloseNotif = document.getElementById('btn-close-notification-modal');
+    const btnMarkAllRead = document.getElementById('btn-mark-all-notifications-read');
+
+    if (btnNotif) {
+        btnNotif.addEventListener('click', () => {
+            if (notifModal) {
+                notifModal.classList.remove('hidden');
+                pollNotifications(true);
+            }
+        });
+    }
+    if (btnCloseNotif && notifModal) {
+        btnCloseNotif.addEventListener('click', () => notifModal.classList.add('hidden'));
+    }
+    if (btnMarkAllRead) {
+        btnMarkAllRead.addEventListener('click', () => {
+            fetch(`${API_BASE}/api/notifications/read-all`, { method: 'PUT' })
+            .then(res => res.json())
+            .then(() => {
+                showToast('Notifications Cleared', 'Marked all notifications as read.', 'info');
+                pollNotifications(true);
+            })
+            .catch(err => console.error(err));
+        });
+    }
+
+    // 2. User Profile Modal
+    const btnProfile = document.getElementById('btn-header-profile') || document.getElementById('btn-open-profile-modal');
+    const profileModal = document.getElementById('profile-modal');
+    const btnCloseProfile = document.getElementById('btn-close-profile-modal');
+    const profileForm = document.getElementById('profile-form');
+
+    if (btnProfile && profileModal) {
+        btnProfile.addEventListener('click', () => {
+            profileModal.classList.remove('hidden');
+            loadUserProfile();
+        });
+    }
+    if (btnCloseProfile && profileModal) {
+        btnCloseProfile.addEventListener('click', () => profileModal.classList.add('hidden'));
+    }
+    if (profileForm) {
+        profileForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('profile-name-input').value.trim();
+            const phone = document.getElementById('profile-phone-input').value.trim();
+            const password = document.getElementById('profile-password-input').value;
+
+            const payload = { name, phone };
+            if (password) payload.password = password;
+
+            fetch(`${API_BASE}/api/users/profile`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(updated => {
+                if (updated.error) throw new Error(updated.error);
+                showToast('Profile Updated', 'Your profile details have been saved.', 'success');
+                if (currentUser) {
+                    currentUser.name = updated.name;
+                    currentUser.contact = updated.contact;
+                    localStorage.setItem('smartcivic_session', JSON.stringify(currentUser));
+                    updateUserBanner();
+                }
+                if (profileModal) profileModal.classList.add('hidden');
+            })
+            .catch(err => showToast('Error', err.message, 'error'));
+        });
+    }
+
+    // 3. Citizen Verification Modals & Star Rating
+    initStarRatingPicker();
+
+    const verifyAcceptModal = document.getElementById('verify-accept-modal');
+    const btnCloseVerifyAccept = document.getElementById('btn-close-verify-accept-modal');
+    const verifyAcceptForm = document.getElementById('verify-accept-form');
+
+    if (btnCloseVerifyAccept && verifyAcceptModal) {
+        btnCloseVerifyAccept.addEventListener('click', () => verifyAcceptModal.classList.add('hidden'));
+    }
+    if (verifyAcceptForm) {
+        verifyAcceptForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const compId = document.getElementById('verify-accept-complaint-id').value;
+            const rating = parseInt(document.getElementById('verify-rating-value').value) || 5;
+            const feedback = document.getElementById('verify-feedback-input').value.trim();
+
+            fetch(`${API_BASE}/api/complaints/${compId}/verify-resolution`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'accept', rating, feedback })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                showToast('Resolution Accepted', `Issue ${compId} successfully verified and closed!`, 'success');
+                if (verifyAcceptModal) verifyAcceptModal.classList.add('hidden');
+                trackComplaint(compId);
+                loadCitizenComplaints();
+                loadCitizenMyComplaints();
+            })
+            .catch(err => showToast('Verification Error', err.message, 'error'));
+        });
+    }
+
+    const verifyRejectModal = document.getElementById('verify-reject-modal');
+    const btnCloseVerifyReject = document.getElementById('btn-close-verify-reject-modal');
+    const verifyRejectForm = document.getElementById('verify-reject-form');
+
+    if (btnCloseVerifyReject && verifyRejectModal) {
+        btnCloseVerifyReject.addEventListener('click', () => verifyRejectModal.classList.add('hidden'));
+    }
+    if (verifyRejectForm) {
+        verifyRejectForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const compId = document.getElementById('verify-reject-complaint-id').value;
+            const reason = document.getElementById('reopen-reason-input').value.trim();
+
+            if (!reason) {
+                showToast('Reason Required', 'Please provide a clear reason for rejecting the resolution.', 'warning');
+                return;
+            }
+
+            fetch(`${API_BASE}/api/complaints/${compId}/verify-resolution`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'reject', reason })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                showToast('Issue Reopened', `Issue ${compId} has been reopened and escalated for rectification.`, 'warning');
+                if (verifyRejectModal) verifyRejectModal.classList.add('hidden');
+                document.getElementById('reopen-reason-input').value = '';
+                trackComplaint(compId);
+                loadCitizenComplaints();
+                loadCitizenMyComplaints();
+            })
+            .catch(err => showToast('Reopen Error', err.message, 'error'));
+        });
+    }
+
+    // 4. Authority Rejection Modal
+    const authRejectModal = document.getElementById('authority-reject-modal');
+    const btnCloseAuthReject = document.getElementById('btn-close-authority-reject-modal');
+    const authRejectForm = document.getElementById('authority-reject-form');
+
+    if (btnCloseAuthReject && authRejectModal) {
+        btnCloseAuthReject.addEventListener('click', () => authRejectModal.classList.add('hidden'));
+    }
+    if (authRejectForm) {
+        authRejectForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const compId = document.getElementById('authority-reject-complaint-id').value;
+            const reason = document.getElementById('authority-reject-reason-input').value.trim();
+
+            if (!reason) {
+                showToast('Reason Required', 'Please provide a formal rejection reason.', 'warning');
+                return;
+            }
+
+            fetch(`${API_BASE}/api/complaints/${compId}/reject`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                showToast('Complaint Rejected', `Complaint ${compId} rejected. Citizen notified.`, 'info');
+                if (authRejectModal) authRejectModal.classList.add('hidden');
+                document.getElementById('authority-reject-reason-input').value = '';
+                loadDashboardData();
+            })
+            .catch(err => showToast('Error', err.message, 'error'));
+        });
+    }
+
+    // 5. Worker Evidence Photo Upload Modal
+    const workerPhotoModal = document.getElementById('worker-photo-modal');
+    const btnCloseWorkerPhoto = document.getElementById('btn-close-worker-photo-modal');
+    const btnOpenWorkerPhoto = document.getElementById('btn-open-worker-photo');
+    const workerPhotoForm = document.getElementById('worker-photo-form');
+
+    window.openWorkerPhotoModal = function(id) {
+        const compId = id || (activeWorkerTask ? activeWorkerTask.complaint_id : '');
+        if (!compId) {
+            showToast('Select Task', 'Select an assigned task first.', 'warning');
+            return;
+        }
+        document.getElementById('worker-photo-complaint-id').value = compId;
+        const modal = document.getElementById('worker-photo-modal');
+        if (modal) modal.classList.remove('hidden');
+    };
+
+    if (btnOpenWorkerPhoto && workerPhotoModal) {
+        btnOpenWorkerPhoto.addEventListener('click', () => {
+            window.openWorkerPhotoModal();
+        });
+    }
+    if (btnCloseWorkerPhoto && workerPhotoModal) {
+        btnCloseWorkerPhoto.addEventListener('click', () => workerPhotoModal.classList.add('hidden'));
+    }
+    if (workerPhotoForm) {
+        workerPhotoForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const compId = document.getElementById('worker-photo-complaint-id').value;
+            const stage = document.getElementById('worker-photo-stage').value;
+            const file = document.getElementById('worker-photo-file').files[0];
+            const caption = document.getElementById('worker-photo-caption').value.trim();
+
+            if (!file) {
+                showToast('Photo Required', 'Please choose a photo file.', 'warning');
+                return;
+            }
+
+            const fd = new FormData();
+            fd.append('stage', stage);
+            fd.append('image', file);
+            if (caption) fd.append('caption', caption);
+
+            fetch(`${API_BASE}/api/complaints/${compId}/evidence`, {
+                method: 'POST',
+                body: fd
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                showToast('Evidence Uploaded', `${stage.toUpperCase()} photo attached to ${compId}.`, 'success');
+                if (workerPhotoModal) workerPhotoModal.classList.add('hidden');
+                document.getElementById('worker-photo-file').value = '';
+                document.getElementById('worker-photo-caption').value = '';
+                loadWorkerTasks();
+            })
+            .catch(err => showToast('Upload Error', err.message, 'error'));
+        });
+    }
+
+    // 6. Corporator Site Inspection Modal
+    const inspectionModal = document.getElementById('inspection-modal');
+    const btnCloseInspection = document.getElementById('btn-close-inspection-modal');
+    const inspectionForm = document.getElementById('inspection-form');
+
+    if (btnCloseInspection && inspectionModal) {
+        btnCloseInspection.addEventListener('click', () => inspectionModal.classList.add('hidden'));
+    }
+    if (inspectionForm) {
+        inspectionForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const compId = document.getElementById('inspection-complaint-id').value;
+            const notes = document.getElementById('inspection-notes-input').value.trim();
+            const file = document.getElementById('inspection-image-file').files[0];
+
+            if (!notes) {
+                showToast('Notes Required', 'Please enter your inspection observations.', 'warning');
+                return;
+            }
+
+            const fd = new FormData();
+            fd.append('inspection_notes', notes);
+            if (file) fd.append('inspection_image', file);
+
+            fetch(`${API_BASE}/api/complaints/${compId}/inspection`, {
+                method: 'POST',
+                body: fd
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                showToast('Inspection Recorded', `Site visit report saved for ${compId}.`, 'success');
+                if (inspectionModal) inspectionModal.classList.add('hidden');
+                document.getElementById('inspection-notes-input').value = '';
+                document.getElementById('inspection-image-file').value = '';
+                loadDashboardData();
+            })
+            .catch(err => showToast('Inspection Error', err.message, 'error'));
+        });
+    }
+
+    // 7. Higher Authority Reassign Modal
+    const reassignModal = document.getElementById('reassign-modal');
+    const btnCloseReassign = document.getElementById('btn-close-reassign-modal');
+    const reassignForm = document.getElementById('reassign-form');
+
+    if (btnCloseReassign && reassignModal) {
+        btnCloseReassign.addEventListener('click', () => reassignModal.classList.add('hidden'));
+    }
+    if (reassignForm) {
+        reassignForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const compId = document.getElementById('reassign-complaint-id').value;
+            const ward = document.getElementById('reassign-ward-select').value;
+            const workerId = document.getElementById('reassign-worker-select').value;
+            const reason = document.getElementById('reassign-reason-input').value.trim();
+
+            fetch(`${API_BASE}/api/complaints/${compId}/reassign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ward, assigned_to: workerId, reason })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                showToast('Reassigned', `Issue ${compId} successfully reassigned.`, 'success');
+                if (reassignModal) reassignModal.classList.add('hidden');
+                loadHigherAuthorityData();
+            })
+            .catch(err => showToast('Reassign Error', err.message, 'error'));
+        });
+    }
+
+    // 8. Higher Authority Directive Notice Modal
+    const adminNoticeModal = document.getElementById('admin-notice-modal');
+    const btnCloseAdminNotice = document.getElementById('btn-close-admin-notice-modal');
+    const adminNoticeForm = document.getElementById('admin-notice-form');
+
+    if (btnCloseAdminNotice && adminNoticeModal) {
+        btnCloseAdminNotice.addEventListener('click', () => adminNoticeModal.classList.add('hidden'));
+    }
+    if (adminNoticeForm) {
+        adminNoticeForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const compId = document.getElementById('admin-notice-complaint-id').value;
+            const notice_type = document.getElementById('admin-notice-type').value;
+            const message = document.getElementById('admin-notice-message').value.trim();
+
+            if (!message) {
+                showToast('Message Required', 'Please enter the directive notice message.', 'warning');
+                return;
+            }
+
+            fetch(`${API_BASE}/api/complaints/${compId}/administrative-notice`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notice_type, message })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                showToast('Directive Issued', `Notice issued for ${compId}.`, 'success');
+                if (adminNoticeModal) adminNoticeModal.classList.add('hidden');
+                document.getElementById('admin-notice-message').value = '';
+                loadHigherAuthorityData();
+            })
+            .catch(err => showToast('Notice Error', err.message, 'error'));
+        });
+    }
+
+    // 9. Discussion / Comments Modal
+    const commentsModal = document.getElementById('comments-modal');
+    const btnCloseComments = document.getElementById('btn-close-comments-modal');
+    const modalCommentForm = document.getElementById('modal-new-comment-form');
+
+    if (btnCloseComments && commentsModal) {
+        btnCloseComments.addEventListener('click', () => commentsModal.classList.add('hidden'));
+    }
+    if (modalCommentForm) {
+        modalCommentForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const compId = document.getElementById('comments-modal-complaint-id').textContent;
+            const input = document.getElementById('modal-new-comment-input');
+            const comment = input.value.trim();
+            if (!comment) return;
+
+            postComment(compId, comment, () => {
+                input.value = '';
+                openCommentsModal(compId);
+            });
+        });
+    }
+
+    // 10. Tracker In-Card Discussion Form
+    const trackerCommentForm = document.getElementById('form-tracker-add-comment');
+    if (trackerCommentForm) {
+        trackerCommentForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (!cachedTrackData) return;
+            const input = document.getElementById('tracker-comment-input') || document.getElementById('input-tracker-comment');
+            if (!input) return;
+            const comment = input.value.trim();
+            if (!comment) return;
+
+            postComment(cachedTrackData.complaint_id, comment, () => {
+                input.value = '';
+                loadTrackerComments(cachedTrackData.complaint_id);
+            });
+        });
+    }
+
+    // 11. CSV Export Handlers
+    const btnExportCsv = document.getElementById('btn-export-csv');
+    if (btnExportCsv) {
+        btnExportCsv.addEventListener('click', () => {
+            window.location.href = `${API_BASE}/api/reports/export`;
+        });
+    }
+    const btnHaExportCsv = document.getElementById('btn-ha-export-csv');
+    if (btnHaExportCsv) {
+        btnHaExportCsv.addEventListener('click', () => {
+            window.location.href = `${API_BASE}/api/reports/export`;
+        });
+    }
+
+    // 12. Search & Filter Listeners for Corporator Table
+    const filterSearchAuth = document.getElementById('filter-search-authority');
+    if (filterSearchAuth) {
+        filterSearchAuth.addEventListener('input', () => {
+            if (activeComplaintsList) renderComplaintsTable(activeComplaintsList);
+        });
+    }
+    const filterCatAuth = document.getElementById('filter-category-authority');
+    if (filterCatAuth) {
+        filterCatAuth.addEventListener('change', () => {
+            if (activeComplaintsList) renderComplaintsTable(activeComplaintsList);
+        });
+    }
+
+    // 13. Higher Authority Filters & Refresh
+    const haFilterWard = document.getElementById('ha-filter-ward');
+    if (haFilterWard) haFilterWard.addEventListener('change', loadHigherAuthorityData);
+    const haFilterStatus = document.getElementById('ha-filter-status');
+    if (haFilterStatus) haFilterStatus.addEventListener('change', loadHigherAuthorityData);
+    const btnRefreshHa = document.getElementById('btn-refresh-ha-dashboard');
+    if (btnRefreshHa) btnRefreshHa.addEventListener('click', loadHigherAuthorityData);
+
+    // 14. Citizen Filter Pills
+    document.querySelectorAll('.citizen-filter-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+            document.querySelectorAll('.citizen-filter-pill').forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            activeCitizenFilter = pill.getAttribute('data-filter') || 'all';
+            loadCitizenMyComplaints();
+        });
+    });
+
+    // 15. Citizen "My Submitted Issues" Refresh Button
+    const btnRefreshMyComplaints = document.getElementById('btn-refresh-my-complaints');
+    if (btnRefreshMyComplaints) {
+        btnRefreshMyComplaints.addEventListener('click', () => {
+            loadCitizenMyComplaints();
+            showToast('Refreshed', 'Updated your personal submitted issues list.', 'info');
+        });
+    }
+
+    // 16. Worker Tasks Filter Chips
+    document.querySelectorAll('.worker-filter-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('.worker-filter-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            activeWorkerFilter = chip.getAttribute('data-worker-filter') || 'all';
+            if (activeWorkerTasks && activeWorkerTasks.length > 0) {
+                renderWorkerJobsList(activeWorkerTasks);
+            }
+        });
+    });
+
+    // 17. Universal Modal Backdrop & Escape Key Dismissal
+    initModalBackdropHandling();
+}
+
+// Interactive Star Rating Picker
+function initStarRatingPicker() {
+    const starContainer = document.getElementById('star-rating-picker');
+    const ratingInput = document.getElementById('verify-rating-value');
+    if (!starContainer || !ratingInput) return;
+
+    const stars = starContainer.querySelectorAll('.star-item');
+    stars.forEach(star => {
+        star.addEventListener('click', () => {
+            const val = parseInt(star.getAttribute('data-value')) || 5;
+            ratingInput.value = val;
+            stars.forEach(s => {
+                const sVal = parseInt(s.getAttribute('data-value')) || 1;
+                if (sVal <= val) {
+                    s.style.color = '#f59e0b';
+                } else {
+                    s.style.color = 'var(--text-muted)';
+                }
+            });
+        });
+    });
+}
+
+// Universal Modal Backdrop Click & Escape Key Dismissal
+function initModalBackdropHandling() {
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.classList.add('hidden');
+            }
+        });
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const openModals = Array.from(document.querySelectorAll('.modal-overlay:not(.hidden)'));
+            if (openModals.length > 0) {
+                const topModal = openModals[openModals.length - 1];
+                topModal.classList.add('hidden');
+            }
+        }
+    });
+}
+
+// In-App Notifications Polling & Rendering
+function pollNotifications(forceModalRender = false) {
+    if (!currentUser) return;
+    fetch(`${API_BASE}/api/notifications`)
+    .then(res => res.json())
+    .then(notifications => {
+        cachedNotifications = notifications;
+        const unreadCount = notifications.filter(n => !n.is_read).length;
+        const badge = document.getElementById('header-notif-badge');
+        if (badge) {
+            badge.textContent = unreadCount;
+            if (unreadCount > 0) {
+                badge.classList.remove('hidden');
+                badge.style.display = 'inline-block';
+            } else {
+                badge.classList.add('hidden');
+                badge.style.display = 'none';
+            }
+        }
+        if (forceModalRender || !document.getElementById('notification-modal').classList.contains('hidden')) {
+            renderNotificationsList(notifications);
+        }
+    })
+    .catch(err => console.error(err));
+}
+
+function renderNotificationsList(notifications) {
+    const list = document.getElementById('notifications-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    if (!notifications || notifications.length === 0) {
+        list.innerHTML = '<p class="empty-table-message" style="padding: 24px 0;"><i class="fa-solid fa-bell-slash"></i> No notifications yet.</p>';
+        return;
+    }
+
+    notifications.forEach(n => {
+        const item = document.createElement('div');
+        item.style.padding = '12px 14px';
+        item.style.borderRadius = '8px';
+        item.style.border = '1px solid var(--panel-border)';
+        item.style.background = n.is_read ? 'rgba(255,255,255,0.02)' : 'rgba(99,102,241,0.12)';
+        item.style.cursor = 'pointer';
+        item.style.display = 'flex';
+        item.style.flexDirection = 'column';
+        item.style.gap = '4px';
+
+        const timeStr = window.formatDate ? formatDate(n.created_at) : new Date(n.created_at).toLocaleString();
+
+        item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <strong style="font-size: 0.88rem; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                    ${!n.is_read ? '<span style="width: 8px; height: 8px; border-radius: 50%; background: #38bdf8; display: inline-block;"></span>' : ''}
+                    ${n.title || 'System Notification'}
+                </strong>
+                <span style="font-size: 0.75rem; color: var(--text-muted);">${timeStr}</span>
+            </div>
+            <p style="margin: 0; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.4;">${n.message}</p>
+        `;
+
+        item.addEventListener('click', () => {
+            if (!n.is_read) {
+                fetch(`${API_BASE}/api/notifications/${n.id}/read`, { method: 'PUT' })
+                .then(() => pollNotifications(true))
+                .catch(err => console.error(err));
+            }
+            if (n.complaint_id) {
+                document.getElementById('notification-modal').classList.add('hidden');
+                switchTab('citizen-portal');
+                trackComplaint(n.complaint_id);
+            }
+        });
+
+        list.appendChild(item);
+    });
+}
+
+// User Profile View / Edit
+function loadUserProfile() {
+    fetch(`${API_BASE}/api/users/profile`)
+    .then(res => res.json())
+    .then(user => {
+        const initial = (user.name || 'U').charAt(0).toUpperCase();
+        document.getElementById('profile-avatar-initials').textContent = initial;
+        document.getElementById('profile-display-name').textContent = user.name;
+        document.getElementById('profile-display-role').textContent = `Role: ${user.role.toUpperCase()}`;
+        document.getElementById('profile-name-input').value = user.name;
+        document.getElementById('profile-email-input').value = user.gmail;
+        document.getElementById('profile-phone-input').value = user.contact || '';
+        document.getElementById('profile-ward-input').value = user.ward || 'Central Ward 1';
+        document.getElementById('profile-password-input').value = '';
+    })
+    .catch(err => console.error(err));
+}
+
+// Citizen "My Submitted Complaints" Box
+function loadCitizenMyComplaints() {
+    const box = document.getElementById('citizen-my-complaints-box');
+    const list = document.getElementById('citizen-my-complaints-list');
+    if (!box || !list) return;
+
+    if (!currentUser || currentUser.role !== 'citizen') {
+        box.classList.add('hidden');
+        return;
+    }
+    box.classList.remove('hidden');
+
+    fetch(`${API_BASE}/api/complaints`)
+    .then(res => res.json())
+    .then(complaints => {
+        cachedMyComplaints = complaints;
+        renderCitizenMyComplaintsList(complaints);
+    })
+    .catch(err => console.error(err));
+}
+
+function renderCitizenMyComplaintsList(complaints) {
+    const list = document.getElementById('citizen-my-complaints-list');
+    if (!list) return;
+
+    if (!complaints) complaints = cachedMyComplaints || [];
+
+    // Filter by user's citizen_id or gmail
+    let myIssues = complaints.filter(c => 
+        (c.citizen_id && parseInt(c.citizen_id) === parseInt(currentUser.id)) ||
+        (c.gmail && currentUser.gmail && c.gmail.toLowerCase() === currentUser.gmail.toLowerCase())
+    );
+
+    if (activeCitizenFilter !== 'all') {
+        if (activeCitizenFilter === 'Active') {
+            myIssues = myIssues.filter(c => c.status === 'Assigned' || c.status === 'In Progress' || c.status === 'Verified');
+        } else {
+            myIssues = myIssues.filter(c => c.status === activeCitizenFilter);
+        }
+    }
+
+    list.innerHTML = '';
+    if (myIssues.length === 0) {
+        const filterName = window.t ? t(`status_${activeCitizenFilter.toLowerCase()}`, activeCitizenFilter) : activeCitizenFilter;
+        list.innerHTML = `<p class="empty-table-message" style="padding: 18px 0;"><i class="fa-solid fa-folder-open"></i> ${window.t ? t('no_complaints_found', `No complaints in "${filterName}" category.`) : `No complaints in "${activeCitizenFilter}" category.`}</p>`;
+        return;
+    }
+
+    const trackLabel = window.t ? t('view_live_timeline', 'Track') : 'Track';
+
+    myIssues.forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'job-card';
+        card.style.padding = '12px 14px';
+
+        const prioClass = `badge-${c.priority.toLowerCase()}`;
+        const statusClass = `badge-${c.status.replace(' ', '')}`;
+        const catText = window.getCategoryTranslation ? getCategoryTranslation(c.category) : c.category.replace('_', ' ');
+        const prioText = window.getPriorityTranslation ? getPriorityTranslation(c.priority) : c.priority;
+        const statusText = window.getStatusTranslation ? getStatusTranslation(c.status) : c.status;
+
+        card.innerHTML = `
+            <div class="job-card-header" style="margin-bottom: 6px;">
+                <strong style="color: var(--text-primary); font-size: 0.92rem;">${c.complaint_id}</strong>
+                <div style="display: flex; gap: 4px;">
+                    <span class="badge ${prioClass}">${prioText}</span>
+                    <span class="badge ${statusClass}">${statusText}</span>
+                </div>
+            </div>
+            <div style="font-size: 0.84rem; color: var(--text-secondary); margin-bottom: 8px;">
+                ${c.title ? `<strong>${c.title}</strong> — ` : ''}${c.description}
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.78rem; color: var(--text-muted);">${catText}</span>
+                <button class="btn-submit-blue" onclick="trackComplaint('${c.complaint_id}')" style="margin: 0; padding: 4px 12px; font-size: 0.78rem; border-radius: 6px;">
+                    <i class="fa-solid fa-clock-rotate-left"></i> ${trackLabel}
+                </button>
+            </div>
+        `;
+        list.appendChild(card);
+    });
+}
+
+// Corporator Actions: Verify, Reject, Inspect
+window.verifyComplaint = function(id) {
+    fetch(`${API_BASE}/api/complaints/${id}/verify`, { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) throw new Error(data.error);
+        showToast('Complaint Verified', `Report ${id} verified. Ready for worker dispatch.`, 'success');
+        loadDashboardData();
+    })
+    .catch(err => showToast('Error', err.message, 'error'));
+};
+
+window.openAuthorityRejectModal = function(id) {
+    document.getElementById('authority-reject-complaint-id').value = id;
+    document.getElementById('authority-reject-modal').classList.remove('hidden');
+};
+
+window.openInspectionModal = function(id) {
+    document.getElementById('inspection-complaint-id').value = id;
+    document.getElementById('inspection-modal').classList.remove('hidden');
+};
+
+// Comments & Discussion Thread
+window.openCommentsModal = function(id) {
+    document.getElementById('comments-modal-complaint-id').textContent = id;
+    document.getElementById('comments-modal').classList.remove('hidden');
+
+    const list = document.getElementById('modal-comments-list');
+    list.innerHTML = '<p class="empty-table-message"><i class="fa-solid fa-spinner fa-spin"></i> Loading discussion...</p>';
+
+    fetch(`${API_BASE}/api/complaints/${id}/comments`)
+    .then(res => res.json())
+    .then(comments => {
+        renderCommentsList(comments, list);
+    })
+    .catch(err => console.error(err));
+};
+
+function loadTrackerComments(id) {
+    const list = document.getElementById('tracker-comments-list');
+    if (!list) return;
+    fetch(`${API_BASE}/api/complaints/${id}/comments`)
+    .then(res => res.json())
+    .then(comments => {
+        renderCommentsList(comments, list);
+    })
+    .catch(err => console.error(err));
+}
+
+function renderCommentsList(comments, container) {
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!comments || comments.length === 0) {
+        container.innerHTML = '<p class="empty-table-message" style="padding: 12px 0;"><i class="fa-solid fa-comment-slash"></i> No official notes or comments posted yet.</p>';
+        return;
+    }
+
+    comments.forEach(c => {
+        const item = document.createElement('div');
+        item.style.padding = '8px 12px';
+        item.style.borderRadius = '8px';
+        item.style.background = 'rgba(255,255,255,0.03)';
+        item.style.border = '1px solid var(--panel-border)';
+        item.style.display = 'flex';
+        item.style.flexDirection = 'column';
+        item.style.gap = '2px';
+
+        const timeStr = window.formatDate ? formatDate(c.created_at) : new Date(c.created_at).toLocaleString();
+        const roleLabel = window.getRoleTranslation ? getRoleTranslation(c.user_role) : c.user_role;
+        const roleBadge = `<span class="badge" style="font-size: 0.7rem; padding: 2px 6px; text-transform: uppercase;">${roleLabel}</span>`;
+
+        const commentId = `comment-text-${c.id || Math.random().toString(36).substr(2, 9)}`;
+        const translateBtnText = window.t ? t('btn_hf_translate', 'Translate (HF AI)') : 'Translate (HF AI)';
+        const originalBtnText = window.t ? t('btn_show_original', 'Show Original') : 'Original';
+
+        item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                    ${c.user_name} ${roleBadge}
+                </span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button type="button" class="btn-comment-translate" style="background: none; border: none; color: var(--accent-indigo); font-size: 0.74rem; cursor: pointer; padding: 2px 4px; display: inline-flex; align-items: center; gap: 4px;" title="Translate with Hugging Face AI">
+                        <i class="fa-solid fa-language"></i> <span>${translateBtnText}</span>
+                    </button>
+                    <span style="font-size: 0.72rem; color: var(--text-muted);">${timeStr}</span>
+                </div>
+            </div>
+            <p id="${commentId}" style="margin: 0; font-size: 0.84rem; color: var(--text-secondary);">${c.comment}</p>
+        `;
+
+        const btnTranslate = item.querySelector('.btn-comment-translate');
+        let isCommentTranslated = false;
+        const origText = c.comment;
+
+        if (btnTranslate) {
+            btnTranslate.addEventListener('click', async () => {
+                const textEl = document.getElementById(commentId);
+                const currentLang = window.getCurrentLang ? getCurrentLang() : 'en';
+
+                if (!isCommentTranslated) {
+                    btnTranslate.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+                    const res = await translateTextWithHF(origText, currentLang);
+                    if (textEl) textEl.textContent = res.translated_text || origText;
+                    btnTranslate.innerHTML = `<i class="fa-solid fa-rotate-left"></i> <span>${originalBtnText}</span>`;
+                    btnTranslate.style.color = '#10b981';
+                    isCommentTranslated = true;
+                } else {
+                    if (textEl) textEl.textContent = origText;
+                    btnTranslate.innerHTML = `<i class="fa-solid fa-language"></i> <span>${translateBtnText}</span>`;
+                    btnTranslate.style.color = 'var(--accent-indigo)';
+                    isCommentTranslated = false;
+                }
+            });
+        }
+
+        container.appendChild(item);
+    });
+}
+
+function postComment(complaintId, comment, onSuccess) {
+    fetch(`${API_BASE}/api/complaints/${complaintId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comment })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) throw new Error(data.error);
+        showToast('Comment Posted', 'Your note has been added to the discussion.', 'success');
+        if (onSuccess) onSuccess();
+    })
+    .catch(err => showToast('Error', err.message, 'error'));
+}
+
+// Corporator Performance Leaderboard
+function loadCorporatorPerformance() {
+    const tbody = document.getElementById('authority-performance-table-body');
+    if (!tbody) return;
+
+    fetch(`${API_BASE}/api/corporator/performance`)
+    .then(res => res.json())
+    .then(data => {
+        tbody.innerHTML = '';
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-table-message">No ward data available.</td></tr>';
+            return;
+        }
+
+        data.forEach(item => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${item.ward.toUpperCase()}</strong></td>
+                <td>${item.total_complaints}</td>
+                <td><span style="color: #10b981; font-weight: 700;">${item.resolved_complaints}</span></td>
+                <td><span class="badge badge-emerald">${item.resolution_rate}%</span></td>
+                <td>${item.avg_resolution_hours}h</td>
+                <td><span style="color: #f59e0b; font-weight: 700;">${item.citizen_rating} ★</span></td>
+                <td><span style="color: ${item.overdue_complaints > 0 ? '#f43f5e' : 'var(--text-muted)'}; font-weight: 700;">${item.overdue_complaints}</span></td>
+            `;
+            tbody.appendChild(row);
+        });
+    })
+    .catch(err => console.error(err));
+}
+
+// HIGHER AUTHORITY COMMAND CENTER MODULE
+function loadHigherAuthorityData() {
+    // 1. Citywide KPIs
+    fetch(`${API_BASE}/api/analytics`)
+    .then(res => res.json())
+    .then(data => {
+        const haTotal = document.getElementById('stat-ha-total');
+        if (haTotal) haTotal.textContent = data.total;
+        const haEsc = document.getElementById('stat-ha-escalated');
+        if (haEsc) haEsc.textContent = data.escalated;
+        const haOver = document.getElementById('stat-ha-overdue');
+        if (haOver) haOver.textContent = data.overdue_count || 0;
+        const haRate = document.getElementById('stat-ha-res-rate');
+        if (haRate) haRate.textContent = `${data.resolution_rate || 0}%`;
+    })
+    .catch(err => console.error(err));
+
+    // 2. Citywide Complaints Registry
+    const wardFilter = document.getElementById('ha-filter-ward') ? document.getElementById('ha-filter-ward').value : '';
+    const statusFilter = document.getElementById('ha-filter-status') ? document.getElementById('ha-filter-status').value : '';
+
+    let url = `${API_BASE}/api/complaints`;
+    const params = [];
+    if (wardFilter) params.push(`ward=${wardFilter}`);
+    if (statusFilter) params.push(`status=${statusFilter}`);
+    if (params.length > 0) url += `?${params.join('&')}`;
+
+    fetch(url)
+    .then(res => res.json())
+    .then(complaints => {
+        cachedHAComplaints = complaints;
+        renderHigherAuthorityTable(complaints);
+    })
+    .catch(err => console.error(err));
+
+    // 3. Multi-ward Leaderboard
+    const haLbBody = document.getElementById('ha-leaderboard-table-body');
+    if (haLbBody) {
+        fetch(`${API_BASE}/api/corporator/performance`)
+        .then(res => res.json())
+        .then(leaderboard => {
+            cachedHALeaderboard = leaderboard;
+            haLbBody.innerHTML = '';
+            if (!leaderboard || leaderboard.length === 0) {
+                haLbBody.innerHTML = '<tr><td colspan="9" class="empty-table-message">No leaderboard data found.</td></tr>';
+                return;
+            }
+            leaderboard.forEach((lb, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>#${idx + 1}</strong></td>
+                    <td><span class="badge">${lb.ward.toUpperCase()}</span></td>
+                    <td>${lb.corporator_name}</td>
+                    <td>${lb.total_complaints}</td>
+                    <td><strong style="color: #10b981;">${lb.resolved_complaints}</strong></td>
+                    <td><span class="badge badge-emerald">${lb.resolution_rate}%</span></td>
+                    <td>${lb.avg_resolution_hours}h</td>
+                    <td><span style="color: #f59e0b; font-weight: 700;">${lb.citizen_rating} ★</span></td>
+                    <td><strong style="color: ${lb.overdue_complaints > 0 ? '#f43f5e' : 'var(--text-muted)'};">${lb.overdue_complaints}</strong></td>
+                `;
+                haLbBody.appendChild(tr);
+            });
+        })
+        .catch(err => console.error(err));
+    }
+
+    // 4. System Audit Trail Live Log
+    const haAuditBody = document.getElementById('ha-audit-table-body');
+    if (haAuditBody) {
+        fetch(`${API_BASE}/api/audit-logs`)
+        .then(res => res.json())
+        .then(logs => {
+            cachedHALogs = logs;
+            haAuditBody.innerHTML = '';
+            if (!logs || logs.length === 0) {
+                haAuditBody.innerHTML = '<tr><td colspan="6" class="empty-table-message">No audit log entries recorded.</td></tr>';
+                return;
+            }
+            logs.slice(0, 50).forEach(entry => {
+                const tr = document.createElement('tr');
+                const timeStr = window.formatDate ? formatDate(entry.created_at) : new Date(entry.created_at).toLocaleString();
+                const roleLabel = window.getRoleTranslation ? getRoleTranslation(entry.user_role) : entry.user_role;
+                tr.innerHTML = `
+                    <td style="font-size: 0.8rem; color: var(--text-muted);">${timeStr}</td>
+                    <td><span class="badge" style="font-family: monospace; font-size: 0.75rem;">${entry.action}</span></td>
+                    <td><strong>${entry.user_name}</strong></td>
+                    <td><span class="badge">${roleLabel}</span></td>
+                    <td>${entry.complaint_id || '-'}</td>
+                    <td style="font-size: 0.82rem; color: var(--text-secondary);">${entry.details || ''}</td>
+                `;
+                haAuditBody.appendChild(tr);
+            });
+        })
+        .catch(err => console.error(err));
+    }
+}
+
+function renderHigherAuthorityTable(complaints) {
+    const tbody = document.getElementById('ha-complaints-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!complaints) complaints = cachedHAComplaints || [];
+
+    if (complaints.length === 0) {
+        const emptyMsg = window.t ? t('no_complaints_found', 'No complaints matching oversight filters.') : 'No complaints matching oversight filters.';
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-table-message"><i class="fa-solid fa-folder-open"></i> ${emptyMsg}</td></tr>`;
+        return;
+    }
+
+    const unassignedText = window.t ? t('unassigned', 'Unassigned') : 'Unassigned';
+    const reassignText = window.t ? t('reassign_title', 'Reassign') : 'Reassign';
+    const directiveText = window.t ? t('opt_immediate_directive', 'Directive') : 'Directive';
+    const discTitle = window.t ? t('discussion_title', 'Discussion') : 'Discussion';
+    const overdueLabel = window.t ? t('stat_overdue_count', 'OVERDUE') : 'OVERDUE';
+    const onScheduleLabel = window.t ? t('status_active', 'On Schedule') : 'On Schedule';
+
+    complaints.forEach(c => {
+        const tr = document.createElement('tr');
+        const prioClass = `badge-${c.priority.toLowerCase()}`;
+        const statusClass = `badge-${c.status.replace(' ', '')}`;
+        const prioText = window.getPriorityTranslation ? getPriorityTranslation(c.priority) : c.priority;
+        const statusText = window.getStatusTranslation ? getStatusTranslation(c.status) : c.status;
+        const escBadge = c.escalation_level > 0 ? `<span class="badge badge-high">Tier ${c.escalation_level}</span>` : '<span class="text-muted">-</span>';
+        const slaStatus = c.overdue_flag ? `<span style="color: #f43f5e; font-weight: 700;"><i class="fa-solid fa-triangle-exclamation"></i> ${overdueLabel}</span>` : `<span style="color: #10b981;">${onScheduleLabel}</span>`;
+        const assignedName = c.assigned_to_name || `<i class="text-muted">${unassignedText}</i>`;
+
+        const titleText = c.title || (window.getCategoryTranslation ? getCategoryTranslation(c.category).toUpperCase() : c.category.toUpperCase());
+        const cellId = `ha-desc-${c.complaint_id}`;
+
+        tr.innerHTML = `
+            <td><strong>${c.complaint_id}</strong></td>
+            <td style="max-width: 240px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                    <strong style="font-size: 0.88rem; color: var(--text-primary);">${titleText}</strong>
+                    <button type="button" class="btn-ha-translate" data-id="${c.complaint_id}" style="background: none; border: none; color: var(--accent-indigo); font-size: 0.76rem; cursor: pointer; padding: 2px 4px;" title="Translate text (Hugging Face AI)">
+                        <i class="fa-solid fa-language"></i>
+                    </button>
+                </div>
+                <span id="${cellId}" style="font-size: 0.8rem; color: var(--text-secondary); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.description}</span>
+            </td>
+            <td><span class="badge">${c.ward.toUpperCase()}</span></td>
+            <td><span class="badge ${prioClass}">${prioText}</span></td>
+            <td><span class="badge ${statusClass}">${statusText}</span></td>
+            <td>${escBadge}</td>
+            <td>${slaStatus}</td>
+            <td>${assignedName}</td>
+            <td>
+                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                    <button class="btn-action-assign" onclick="openReassignModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.75rem;" title="${reassignText}"><i class="fa-solid fa-arrows-split-up-and-left"></i> ${reassignText}</button>
+                    <button class="btn-action-assign" onclick="openAdminNoticeModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(245,158,11,0.2); border: 1px solid #f59e0b; color: #fcd34d;" title="${directiveText}"><i class="fa-solid fa-file-signature"></i> ${directiveText}</button>
+                    <button class="btn-action-assign" onclick="openCommentsModal('${c.complaint_id}')" style="padding: 4px 8px; font-size: 0.75rem;" title="${discTitle}"><i class="fa-solid fa-comments"></i></button>
+                </div>
+            </td>
+        `;
+
+        const btnTrans = tr.querySelector('.btn-ha-translate');
+        if (btnTrans) {
+            let isTrans = false;
+            btnTrans.addEventListener('click', async () => {
+                const descSpan = document.getElementById(cellId);
+                const curLang = window.getCurrentLang ? getCurrentLang() : 'en';
+                if (!isTrans) {
+                    btnTrans.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+                    let transDesc = c.description;
+                    if (curLang === 'en' && c.english_description) {
+                        transDesc = c.english_description;
+                    } else {
+                        const res = await translateTextWithHF(c.description, curLang);
+                        transDesc = res.translated_text || c.description;
+                    }
+                    if (descSpan) descSpan.textContent = transDesc;
+                    btnTrans.innerHTML = `<i class="fa-solid fa-rotate-left"></i>`;
+                    btnTrans.style.color = '#10b981';
+                    isTrans = true;
+                } else {
+                    if (descSpan) descSpan.textContent = c.description;
+                    btnTrans.innerHTML = `<i class="fa-solid fa-language"></i>`;
+                    btnTrans.style.color = 'var(--accent-indigo)';
+                    isTrans = false;
+                }
+            });
+        }
+
+        tbody.appendChild(tr);
+    });
+}
+
+window.openReassignModal = function(id) {
+    document.getElementById('reassign-complaint-id').value = id;
+    const workerSelect = document.getElementById('reassign-worker-select');
+    workerSelect.innerHTML = '<option value="">-- Choose Dispatch Worker --</option>';
+
+    if (activeWorkersList && activeWorkersList.length > 0) {
+        activeWorkersList.forEach(w => {
+            const opt = document.createElement('option');
+            opt.value = w.id;
+            opt.textContent = `${w.name} (${w.ward || 'Central'})`;
+            workerSelect.appendChild(opt);
+        });
+    } else {
+        fetch(`${API_BASE}/api/users?role=worker`)
+        .then(res => res.json())
+        .then(workers => {
+            activeWorkersList = workers;
+            workers.forEach(w => {
+                const opt = document.createElement('option');
+                opt.value = w.id;
+                opt.textContent = `${w.name} (${w.ward || 'Central'})`;
+                workerSelect.appendChild(opt);
+            });
+        });
+    }
+
+    document.getElementById('reassign-modal').classList.remove('hidden');
+};
+
+window.openAdminNoticeModal = function(id) {
+    document.getElementById('admin-notice-complaint-id').value = id;
+    document.getElementById('admin-notice-modal').classList.remove('hidden');
+};
 

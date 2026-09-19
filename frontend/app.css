@@ -1534,9 +1534,12 @@ body.light-theme .input-with-icon input:focus {
 
 /* Role Selector cards */
 .role-selector-row {
-    display: flex;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 12px;
     margin-top: 6px;
+    width: 100%;
+    overflow: visible;
 }
 .role-card {
     display: flex;
@@ -1547,7 +1550,9 @@ body.light-theme .input-with-icon input:focus {
     background: rgba(30, 41, 59, 0.65);
     border-radius: 12px;
     padding: 12px 8px;
-    flex: 1;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     cursor: pointer;
     color: var(--text-secondary);
     font-size: 0.82rem;
@@ -1555,6 +1560,13 @@ body.light-theme .input-with-icon input:focus {
     gap: 8px;
     letter-spacing: 0.4px;
     transition: all 0.2s ease;
+}
+.role-card span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    text-align: center;
 }
 .role-card i {
     font-size: 1.35rem;
@@ -1613,6 +1625,36 @@ body.light-theme .role-card.active {
     background: rgba(99, 102, 241, 0.12);
     border-color: var(--accent-indigo);
     color: var(--accent-indigo);
+}
+
+/* Responsive layout adjustments for Role Selector and Auth Modal */
+@media (max-width: 599px) {
+    .auth-card,
+    body.landing-page .auth-card {
+        padding: 28px 18px 24px 18px;
+    }
+    .role-selector-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+}
+
+@media (min-width: 600px) and (max-width: 1023px) {
+    .role-selector-row {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+}
+
+@media (min-width: 1024px) {
+    .auth-card,
+    body.landing-page .auth-card {
+        max-width: 680px;
+    }
+    .role-selector-row {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+    }
 }
 
 /* Blue Submit Button */
@@ -2449,3 +2491,258 @@ body.light-theme .auth-lang-row {
         font-size: 0.82rem;
     }
 }
+
+/* ==============================================
+   CIVIC SYSTEM ENHANCED STYLES & NOTIFICATIONS
+   ============================================== */
+
+/* Header Notification Bell & Badge */
+.header-notif-btn {
+    position: relative;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+.header-notif-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: var(--accent-indigo);
+}
+.notif-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #f43f5e;
+    color: #ffffff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    border: 2px solid var(--bg-dark);
+    line-height: 1.2;
+}
+
+/* Header User Profile Trigger */
+.header-profile-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+.header-profile-btn:hover {
+    background: rgba(20, 184, 166, 0.2);
+    border-color: var(--accent-teal);
+}
+
+/* Citizen "My Complaints" Filter Pills */
+.citizen-filter-pill {
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+.citizen-filter-pill:hover {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--text-primary);
+}
+.citizen-filter-pill.active {
+    background: var(--accent-indigo);
+    border-color: var(--accent-indigo);
+    color: #ffffff;
+}
+
+/* Interactive Star Rating Picker */
+.star-rating-picker .star-item {
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+.star-rating-picker .star-item:hover {
+    transform: scale(1.25);
+}
+
+/* Form Presets Dropdown */
+.form-select-category {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: var(--font-body);
+}
+
+/* Multi-stage Evidence Cards */
+.evidence-card-box {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: var(--transition-smooth);
+}
+.evidence-card-box:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(255, 255, 255, 0.04);
+}
+.evidence-card-box img {
+    width: 100%;
+    height: 130px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Header Action Buttons */
+.btn-icon-header {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: var(--transition-smooth);
+}
+.btn-icon-header:hover {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: var(--accent-indigo);
+    color: var(--accent-indigo);
+    transform: translateY(-1px);
+}
+body.light-theme .btn-icon-header {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #334155;
+}
+body.light-theme .btn-icon-header:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: var(--accent-indigo);
+    color: var(--accent-indigo);
+}
+
+/* Filter Chips (Universal & Worker) */
+.chip-filter, .worker-filter-chip {
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--panel-border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    user-select: none;
+}
+.chip-filter:hover, .worker-filter-chip:hover {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--text-primary);
+    border-color: rgba(99, 102, 241, 0.35);
+}
+.chip-filter.active, .worker-filter-chip.active {
+    background: var(--accent-indigo);
+    border-color: var(--accent-indigo);
+    color: #ffffff;
+    box-shadow: 0 2px 10px var(--accent-indigo-glow);
+}
+body.light-theme .chip-filter,
+body.light-theme .worker-filter-chip {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #475569;
+}
+body.light-theme .chip-filter.active,
+body.light-theme .worker-filter-chip.active {
+    background: var(--accent-indigo);
+    border-color: var(--accent-indigo);
+    color: #ffffff;
+}
+
+/* Tracker SLA Deadline, Rejection, and Reopened Banners */
+.deadline-badge-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 0.84rem;
+    transition: var(--transition-smooth);
+}
+
+.rejection-alert-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: fadeIn 0.3s ease;
+}
+
+.reopen-alert-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: fadeIn 0.3s ease;
+}
+
+/* Tracker Comments Thread */
+.tracker-comments-section {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+body.light-theme .tracker-comments-section {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+/* Light Theme Enhancements for Evidence Boxes & Modals */
+body.light-theme .evidence-card-box {
+    background: #ffffff;
+    border-color: #e2e8f0;
+}
+body.light-theme .evidence-card-box:hover {
+    border-color: var(--accent-indigo);
+}
+body.light-theme .evidence-card-box img {
+    border-color: #cbd5e1;
+}
+
+/* Glass card & Modal light theme fixes */
+body.light-theme .modal-content {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #e2e8f0 !important;
+}
+body.light-theme .modal-header h3 {
+    color: #0f172a !important;
+}
+body.light-theme .btn-close-modal {
+    color: #64748b;
+}
+body.light-theme .btn-close-modal:hover {
+    color: #0f172a;
+}
+

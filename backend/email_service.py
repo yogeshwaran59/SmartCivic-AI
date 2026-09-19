@@ -63,7 +63,11 @@ def _dispatch_email_smtp(to_email, subject, html_content, text_content, sender_g
         print(f"[EMAIL SERVICE WARNING] No active Gmail SMTP credentials (user or .env).")
         print(f"[EMAIL SERVICE] Simulating email sending (Mock Log):")
         print(f"To: {to_email}")
-        print(f"Content Summary: {text_content or 'HTML Complaint Notification'}")
+        try:
+            print(f"Content Summary: {text_content or 'HTML Complaint Notification'}")
+        except UnicodeEncodeError:
+            safe_text = (text_content or 'HTML Complaint Notification').encode('ascii', errors='replace').decode('ascii')
+            print(f"Content Summary: {safe_text}")
         print(f"============================================================\n")
         return
 
