@@ -11,3 +11,5 @@ requests
 psycopg2-binary
 huggingface_hub
 transformers
+gunicorn
+waitress

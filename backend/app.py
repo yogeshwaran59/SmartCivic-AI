@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Ensure backend directory is in sys.path so modules resolve whether run from root or backend
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
 from flask import Flask, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -46,8 +53,9 @@ def get_db_hostaddr(database_url):
     return None
 
 def create_app(config=None):
-    # Setup flask to serve frontend files from the relative '../frontend' folder
-    app = Flask(__name__, static_folder='../frontend', static_url_path='')
+    # Setup flask to serve frontend files with absolute path resolution
+    frontend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend'))
+    app = Flask(__name__, static_folder=frontend_dir, static_url_path='')
     
     # Enable CORS
     cors = CORS()
@@ -138,6 +146,6 @@ def create_app(config=None):
 
 if __name__ == '__main__':
     app = create_app()
-    # Run the server locally on port 5000
-    print("[Flask] Starting server at http://127.0.0.1:5000")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    port = int(os.environ.get('PORT', 5000))
+    print(f"[Flask] Starting server at http://0.0.0.0:{port}")
+    app.run(host='0.0.0.0', port=port, debug=False)

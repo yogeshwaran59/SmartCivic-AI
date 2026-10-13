@@ -1,0 +1,13 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+.vscode
+*.log
+backend/test_smartcivic.db
+backend/smartcivic.db
+.ngrok.exe.old

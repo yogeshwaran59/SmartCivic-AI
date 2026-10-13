@@ -48,6 +48,17 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'mov', 'avi', 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+@routes_bp.route('/health', methods=['GET'])
+@routes_bp.route('/api/health', methods=['GET'])
+def health_check():
+    """Deployment liveness and healthcheck endpoint."""
+    return jsonify({
+        'status': 'healthy',
+        'service': 'SmartCivic AI',
+        'database': 'connected',
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    }), 200
+
 # -------------------------------------------------------------
 # Authentication & Authorization Helpers
 # -------------------------------------------------------------
@@ -137,6 +148,32 @@ def normalize_category(cat_str):
         'manhole': 'open_drain'
     }
     return mapping.get(c, c)
+
+def compute_sla_deadline_hours(category, priority='Medium'):
+    """
+    Computes SLA resolution timer in hours:
+    - 24 Hours: Drainage and other critical civic issues (drainage, open_drain, sewage_overflow,
+      water_leakage, manhole, fallen_tree, or any High priority issue).
+    - 48 Hours: Pothole and road infrastructure issues (pothole, road_damage, footpath,
+      street_light, garbage, or Medium priority).
+    - 72 Hours: Low priority general issues.
+    """
+    cat = (category or '').lower().strip()
+    CRITICAL_24HR_CATEGORIES = {
+        'drainage', 'open_drain', 'sewage', 'sewage_overflow', 
+        'water_leakage', 'manhole', 'fallen_tree'
+    }
+    POTHOLE_LIKE_48HR_CATEGORIES = {
+        'pothole', 'road_damage', 'footpath', 'street_light', 'garbage'
+    }
+
+    if cat in CRITICAL_24HR_CATEGORIES or priority == 'High':
+        return 24
+    elif cat in POTHOLE_LIKE_48HR_CATEGORIES:
+        return 48
+    elif priority == 'Low':
+        return 72
+    return 48
 
 # -------------------------------------------------------------
 # GEOTAG & PREVIEW ENDPOINT
@@ -466,8 +503,9 @@ def create_complaint():
             else:
                 title = f"{(category or 'Civic Issue').replace('_', ' ').title()} in {ward.replace('_', ' ').title()}"
 
-        # Compute SLA Deadline based on priority
-        deadline_hours = 24 if priority == 'High' else (48 if priority == 'Medium' else 72)
+        # Compute SLA Deadline based on category and priority:
+        # 24 Hours for drainage and critical issues; 48 Hours for pothole and road infrastructure issues
+        deadline_hours = compute_sla_deadline_hours(category, priority)
         deadline = datetime.now(timezone.utc) + timedelta(hours=deadline_hours)
 
         # Auto-Assign to Ward Worker if available
@@ -882,6 +920,9 @@ def update_complaint(id):
                 complaint.deadline = datetime.fromisoformat(deadline_str)
             except ValueError:
                 pass
+        elif priority and not complaint.deadline:
+            deadline_hours = compute_sla_deadline_hours(complaint.category, priority)
+            complaint.deadline = (complaint.created_at or datetime.now(timezone.utc)) + timedelta(hours=deadline_hours)
 
         # Manage status milestone timestamps
         now = datetime.now(timezone.utc)
@@ -1960,6 +2001,10 @@ def exotel_webhook():
         assigned_worker = User.query.filter_by(role='worker', ward=ward).first() or User.query.filter_by(role='worker').first()
         assigned_to_id = assigned_worker.id if assigned_worker else None
 
+        priority = 'High' if menu_choice == 3 else ('Medium' if menu_choice == 1 else 'Medium')
+        deadline_hours = compute_sla_deadline_hours(category, priority)
+        deadline = datetime.now(timezone.utc) + timedelta(hours=deadline_hours)
+
         new_complaint = Complaint(
             complaint_id=complaint_id,
             title=f"{category.capitalize()} (Phone Report)",
@@ -1967,7 +2012,8 @@ def exotel_webhook():
             latitude=latitude,
             longitude=longitude,
             category=category,
-            priority='High' if menu_choice in [1, 3] else 'Medium',
+            priority=priority,
+            deadline=deadline,
             status='Assigned' if assigned_worker else 'Submitted',
             assigned_to=assigned_to_id,
             ward=ward,

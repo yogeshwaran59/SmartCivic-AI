@@ -1,8 +1,16 @@
 // SmartCivic AI - Frontend JS Application
 
-const API_BASE = (window.location.origin && (window.location.origin.includes(':5000') || window.location.origin.includes(':5500')))
-    ? (window.location.origin.includes(':5500') ? 'http://127.0.0.1:5000' : window.location.origin)
-    : 'http://127.0.0.1:5000';
+const API_BASE = (() => {
+    if (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.startsWith('http')) {
+        // If loaded via VS Code Live Server (default port 5500), forward API calls to local Flask port 5000
+        if (window.location.port === '5500') {
+            return 'http://127.0.0.1:5000';
+        }
+        // Otherwise, use current origin (works for local port 5000 or any production deployment domain)
+        return window.location.origin;
+    }
+    return 'http://127.0.0.1:5000';
+})();
 
 // State management
 let activeTab = 'citizen-portal';
@@ -1166,10 +1174,26 @@ function initForms() {
     // Issue Category Dropdown Quick Select
     const categoryPreset = document.getElementById('form-category-preset');
     const descInput = document.getElementById('form-description');
+    const slaHintText = document.getElementById('category-sla-hint-text');
     if (categoryPreset && descInput) {
         categoryPreset.addEventListener('change', (e) => {
             const selectedVal = e.target.value;
-            if (!selectedVal) return;
+            if (!selectedVal) {
+                if (slaHintText) slaHintText.textContent = 'Standard SLA: Drainage/Sewage (24h Target) | Potholes/Roads (48h Target)';
+                return;
+            }
+
+            // Update dynamic SLA timer badge text
+            if (slaHintText) {
+                const isDrainage = ['drainage', 'open_drain', 'sewage', 'sewage_overflow', 'water_leakage', 'manhole'].includes(selectedVal.toLowerCase());
+                if (isDrainage) {
+                    slaHintText.innerHTML = '<strong style="color: #38bdf8;"><i class="fa-solid fa-bolt"></i> 24-Hour Emergency SLA:</strong> Drainage / Sewage issues are prioritized for 24h resolution.';
+                } else if (['pothole', 'road_damage', 'footpath'].includes(selectedVal.toLowerCase())) {
+                    slaHintText.innerHTML = '<strong style="color: #c084fc;"><i class="fa-solid fa-road"></i> 48-Hour Standard SLA:</strong> Road repairs & pothole remediation set to 48h target.';
+                } else {
+                    slaHintText.innerHTML = '<span style="color: #cbd5e1;"><i class="fa-solid fa-stopwatch"></i> Standard Civic SLA: 24h - 48h resolution target.</span>';
+                }
+            }
 
             const existingText = descInput.value.trim();
             // Clean out any previous category prefix if present
@@ -1776,18 +1800,34 @@ function renderTrackerDetails(data) {
         };
     }
 
-    // SLA Deadline Badge
+    // SLA Deadline Badge (Category Aware: 24h for Drainage, 48h for Pothole)
     const slaEl = document.getElementById('track-sla-deadline') || document.getElementById('track-deadline-text');
     const slaBox = document.getElementById('track-deadline-box');
     if (slaEl) {
         if (data.deadline) {
             const dDate = new Date(data.deadline);
-            slaEl.textContent = `SLA: ${dDate.toLocaleString()}`;
-            if (data.overdue_flag) {
-                if (slaBox) { slaBox.className = 'deadline-badge-box badge-high'; slaBox.classList.remove('hidden'); }
-                slaEl.textContent += ' (OVERDUE)';
+            const now = new Date();
+            const diffMs = dDate - now;
+            const isDrainage = ['drainage', 'open_drain', 'sewage', 'sewage_overflow', 'water_leakage', 'manhole'].includes((data.category || '').toLowerCase()) || data.priority === 'High';
+            const targetLabel = isDrainage ? '24h Target (Drainage/Emergency)' : '48h Target (Pothole/Road Issue)';
+
+            if (diffMs > 0 && !data.overdue_flag) {
+                const remHours = Math.floor(diffMs / (1000 * 60 * 60));
+                const remMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                slaEl.innerHTML = `<strong>${targetLabel}:</strong> <span style="font-weight: 700; color: #10b981;">${remHours}h ${remMins}m remaining</span> (Target: ${dDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}, ${dDate.toLocaleDateString()})`;
+                if (slaBox) { 
+                    slaBox.className = 'deadline-badge-box'; 
+                    slaBox.classList.remove('hidden'); 
+                }
             } else {
-                if (slaBox) { slaBox.className = 'deadline-badge-box'; slaBox.classList.remove('hidden'); }
+                const overMs = Math.abs(diffMs);
+                const overHours = Math.floor(overMs / (1000 * 60 * 60));
+                const overMins = Math.floor((overMs % (1000 * 60 * 60)) / (1000 * 60));
+                slaEl.innerHTML = `<strong>${targetLabel}:</strong> <span style="font-weight: 700; color: #f43f5e;">OVERDUE by ${overHours}h ${overMins}m</span> (Breached: ${dDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}, ${dDate.toLocaleDateString()})`;
+                if (slaBox) { 
+                    slaBox.className = 'deadline-badge-box badge-high'; 
+                    slaBox.classList.remove('hidden'); 
+                }
             }
         } else if (slaBox) {
             slaBox.classList.add('hidden');
@@ -2126,7 +2166,25 @@ function renderComplaintsTable(complaints) {
         }
 
         const formattedDate = window.formatDate ? formatDate(c.created_at) : new Date(c.created_at).toLocaleString();
-        const slaDeadline = c.deadline ? (window.formatDate ? formatDate(c.deadline) : new Date(c.deadline).toLocaleDateString()) : '-';
+        
+        let slaDeadline = '-';
+        if (c.deadline) {
+            const d = new Date(c.deadline);
+            const now = new Date();
+            const diffMs = d - now;
+            const isDrainage = ['drainage', 'open_drain', 'sewage', 'sewage_overflow', 'water_leakage', 'manhole'].includes((c.category || '').toLowerCase()) || c.priority === 'High';
+            const badgeTag = isDrainage 
+                ? '<span style="font-size: 0.68rem; padding: 1px 5px; border-radius: 3px; background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-weight: 700; margin-right: 4px;">24h</span>'
+                : '<span style="font-size: 0.68rem; padding: 1px 5px; border-radius: 3px; background: rgba(167, 139, 250, 0.2); color: #c084fc; font-weight: 700; margin-right: 4px;">48h</span>';
+
+            if (c.overdue_flag || diffMs <= 0) {
+                const overHours = Math.floor(Math.abs(diffMs) / (1000 * 60 * 60));
+                slaDeadline = `<span style="color: #f43f5e; font-weight: 700;">${badgeTag}Overdue (+${overHours}h)</span>`;
+            } else {
+                const remHours = Math.floor(diffMs / (1000 * 60 * 60));
+                slaDeadline = `<span>${badgeTag}${remHours}h left</span>`;
+            }
+        }
 
         const prioClass = `badge-${(c.priority || 'medium').toLowerCase()}`;
         const statusClass = `badge-${(c.status || 'submitted').replace(' ', '')}`;
@@ -2210,6 +2268,21 @@ window.openAssignmentModal = function(id) {
     document.getElementById('modal-complaint-category').textContent = comp.category.replace('_', ' ').toUpperCase();
     document.getElementById('modal-complaint-desc').textContent = comp.description;
     document.getElementById('modal-priority-select').value = comp.priority;
+
+    // Prefill custom deadline with category-based timer (24h for drainage, 48h for pothole)
+    const deadlineInput = document.getElementById('modal-deadline-input');
+    if (deadlineInput) {
+        let targetDate;
+        if (comp.deadline) {
+            targetDate = new Date(comp.deadline);
+        } else {
+            const isDrainage = ['drainage', 'open_drain', 'sewage', 'sewage_overflow', 'water_leakage', 'manhole'].includes((comp.category || '').toLowerCase()) || comp.priority === 'High';
+            const timerHours = isDrainage ? 24 : 48;
+            targetDate = new Date(Date.now() + timerHours * 60 * 60 * 1000);
+        }
+        const pad = n => String(n).padStart(2, '0');
+        deadlineInput.value = `${targetDate.getFullYear()}-${pad(targetDate.getMonth()+1)}-${pad(targetDate.getDate())}T${pad(targetDate.getHours())}:${pad(targetDate.getMinutes())}`;
+    }
 
     const select = document.getElementById('modal-worker-select');
     select.innerHTML = '<option value="">-- Loading Workers... --</option>';
