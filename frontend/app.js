@@ -1550,7 +1550,12 @@ function initForms() {
         const deadlineInput = document.getElementById('modal-deadline-input');
         const deadline = deadlineInput && deadlineInput.value ? deadlineInput.value : null;
 
-        const payload = { status: 'Assigned', assigned_to: workerId, priority: priority };
+        if (!workerId || workerId.trim() === '') {
+            showToast('Select Worker', 'Please select a dispatch worker from the dropdown before assigning.', 'warning');
+            return;
+        }
+
+        const payload = { status: 'Assigned', assigned_to: parseInt(workerId), priority: priority };
         if (deadline) payload.deadline = deadline;
 
         fetch(`${API_BASE}/api/complaints/${compId}`, {
@@ -1558,13 +1563,20 @@ function initForms() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         })
-        .then(res => res.json())
-        .then(data => {
-            showToast('Task Dispatched', `Issue ${compId} assigned successfully with SLA.`, 'success');
+        .then(async res => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to dispatch worker.');
+            }
+            showToast('Task Dispatched', `Issue ${compId} assigned to worker successfully with SLA.`, 'success');
             document.getElementById('assignment-modal').classList.add('hidden');
             loadDashboardData();
+            if (typeof loadWorkerTasks === 'function') loadWorkerTasks();
         })
-        .catch(err => console.error(err));
+        .catch(err => {
+            showToast('Assignment Error', err.message, 'error');
+            console.error(err);
+        });
     });
 
     // Form Resolve Submit

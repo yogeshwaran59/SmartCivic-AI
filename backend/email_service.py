@@ -42,8 +42,73 @@ def send_email_async(to_email, subject, html_content, text_content="", sender_gm
     thread.daemon = True
     thread.start()
 
+def _dispatch_email_via_http(to_email, subject, html_content, text_content=""):
+    """
+    Sends email via HTTP/HTTPS API (Port 443), which Render Free tier NEVER blocks.
+    Supports Resend API (RESEND_API_KEY) and Brevo API (BREVO_API_KEY).
+    """
+    import json
+    import urllib.request
+
+    resend_key = os.getenv('RESEND_API_KEY')
+    if resend_key:
+        try:
+            req_data = json.dumps({
+                "from": "SmartCivic AI <onboarding@resend.dev>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content
+            }).encode('utf-8')
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=req_data,
+                headers={
+                    "Authorization": f"Bearer {resend_key.strip()}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "SmartCivic-AI"
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                print(f"[EMAIL SERVICE SUCCESS] Resend HTTP API sent successfully to {to_email} (Code {resp.status})")
+                return True
+        except Exception as http_err:
+            print(f"[EMAIL SERVICE ERROR] Resend HTTP API failed: {http_err}")
+
+    brevo_key = os.getenv('BREVO_API_KEY')
+    if brevo_key:
+        try:
+            req_data = json.dumps({
+                "sender": {"name": "SmartCivic AI", "email": "yw8971@gmail.com"},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "htmlContent": html_content
+            }).encode('utf-8')
+            req = urllib.request.Request(
+                "https://api.brevo.com/v3/smtp/email",
+                data=req_data,
+                headers={
+                    "api-key": brevo_key.strip(),
+                    "Content-Type": "application/json",
+                    "User-Agent": "SmartCivic-AI"
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                print(f"[EMAIL SERVICE SUCCESS] Brevo HTTP API sent successfully to {to_email} (Code {resp.status})")
+                return True
+        except Exception as http_err:
+            print(f"[EMAIL SERVICE ERROR] Brevo HTTP API failed: {http_err}")
+
+    return False
+
 def _dispatch_email_smtp(to_email, subject, html_content, text_content, sender_gmail=None, sender_password=None):
     load_dotenv(override=True)
+
+    # If an HTTP email API key is configured, send over port 443 (immune to Render SMTP blocks)
+    if os.getenv('RESEND_API_KEY') or os.getenv('BREVO_API_KEY'):
+        if _dispatch_email_via_http(to_email, subject, html_content, text_content):
+            return
     smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
     smtp_port = int(os.getenv('SMTP_PORT', '587'))
     
