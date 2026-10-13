@@ -9,6 +9,7 @@ numpy
 python-dotenv
 requests
 psycopg2-binary
+psycopg[binary]
 huggingface_hub
 transformers
 gunicorn
