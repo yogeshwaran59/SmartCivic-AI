@@ -630,10 +630,7 @@ def create_complaint():
         # Send confirmation email to Citizen if provided
         if citizen_gmail:
             try:
-                user_account = User.query.filter_by(gmail=citizen_gmail).first()
-                sender_g = user_account.gmail if user_account else citizen_gmail
-                sender_p = user_account.password if user_account else None
-                send_complaint_confirmation_email(citizen_gmail, response_data, sender_gmail=sender_g, sender_password=sender_p)
+                send_complaint_confirmation_email(citizen_gmail, response_data)
             except Exception as mail_err:
                 print(f"[WARNING] Citizen confirmation email error: {mail_err}")
 
@@ -997,10 +994,7 @@ def update_complaint(id):
         # Send status update email to citizen if available
         if complaint.citizen_gmail:
             try:
-                user_account = User.query.filter_by(gmail=complaint.citizen_gmail).first()
-                sender_g = user_account.gmail if user_account else complaint.citizen_gmail
-                sender_p = user_account.password if user_account else None
-                send_complaint_status_update_email(complaint.citizen_gmail, complaint.to_dict(), notes, sender_gmail=sender_g, sender_password=sender_p)
+                send_complaint_status_update_email(complaint.citizen_gmail, complaint.to_dict(), notes)
             except Exception as mail_err:
                 print(f"[WARNING] Status update email error: {mail_err}")
 
@@ -2103,7 +2097,7 @@ def signup():
         if role in ['authority', 'higher_authority']:
             send_authority_pending_approval_email(new_user.to_dict())
         else:
-            send_welcome_email(new_user.to_dict(), sender_gmail=gmail, sender_password=password)
+            send_welcome_email(new_user.to_dict())
 
         return jsonify(new_user.to_dict()), 201
     except Exception as e:

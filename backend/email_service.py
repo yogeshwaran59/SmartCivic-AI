@@ -11,6 +11,22 @@ def is_email_enabled():
     enabled_str = os.getenv('ENABLE_EMAIL_NOTIFICATIONS', 'true').strip().lower()
     return enabled_str in ['true', '1', 'yes']
 
+def get_app_base_url():
+    """
+    Dynamically resolves application base URL:
+    1. APP_BASE_URL if explicitly configured
+    2. RENDER_EXTERNAL_URL if running on Render cloud
+    3. Production URL if deployed (PORT or RENDER set)
+    4. Local development URL (http://127.0.0.1:5000)
+    """
+    url = os.getenv('APP_BASE_URL') or os.getenv('RENDER_EXTERNAL_URL')
+    if not url:
+        if os.getenv('RENDER') or os.getenv('PORT'):
+            url = 'https://smartcivic-ai-byof.onrender.com'
+        else:
+            url = 'http://127.0.0.1:5000'
+    return url.rstrip('/')
+
 def send_email_async(to_email, subject, html_content, text_content="", sender_gmail=None, sender_password=None):
     """
     Spawns a daemon thread to send an email asynchronously without blocking Flask request.
@@ -48,7 +64,7 @@ def _dispatch_email_smtp(to_email, subject, html_content, text_content, sender_g
         use_custom = False
 
     sender_email = smtp_user or (os.getenv('SENDER_EMAIL') or '').strip() or 'no-reply@smartcivic.ai'
-    app_base_url = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    app_base_url = get_app_base_url()
 
     print(f"\n============================================================")
     print(f"[EMAIL SERVICE] Preparing email notification to: {to_email}")
@@ -61,6 +77,7 @@ def _dispatch_email_smtp(to_email, subject, html_content, text_content, sender_g
 
     if not smtp_user or not smtp_password:
         print(f"[EMAIL SERVICE WARNING] No active Gmail SMTP credentials (user or .env).")
+        print(f"[EMAIL SERVICE WARNING] Set SMTP_USER and SMTP_PASSWORD in Render Environment tab for live delivery.")
         print(f"[EMAIL SERVICE] Simulating email sending (Mock Log):")
         print(f"To: {to_email}")
         try:
@@ -96,7 +113,7 @@ def _dispatch_email_smtp(to_email, subject, html_content, text_content, sender_g
         # If custom credentials failed, attempt fallback to system env if available
         env_user = (os.getenv('SMTP_USER') or '').strip()
         env_pass = (os.getenv('SMTP_PASSWORD') or '').strip()
-        if use_custom and env_user and env_pass and (env_user != smtp_user):
+        if use_custom and env_user and env_pass and (env_user != smtp_user or env_pass != smtp_password):
             print(f"[EMAIL SERVICE] Attempting fallback to system env credentials ({env_user})...")
             try:
                 msg['From'] = f"SmartCivic AI <{env_user}>"
@@ -111,7 +128,7 @@ def _dispatch_email_smtp(to_email, subject, html_content, text_content, sender_g
 
 def send_welcome_email(user_dict, sender_gmail=None, sender_password=None):
     """
-    Sends a welcome email upon user registration using their registered Gmail credentials.
+    Sends a welcome email upon user registration using system credentials.
     """
     to_email = user_dict.get('gmail')
     if not to_email:
@@ -119,7 +136,7 @@ def send_welcome_email(user_dict, sender_gmail=None, sender_password=None):
 
     name = user_dict.get('name', 'Citizen')
     role = user_dict.get('role', 'citizen').capitalize()
-    app_base_url = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    app_base_url = get_app_base_url()
 
     subject = f"Welcome to SmartCivic AI, {name}!"
 
@@ -174,10 +191,7 @@ def send_welcome_email(user_dict, sender_gmail=None, sender_password=None):
     </html>
     """
 
-    # Pass sender credentials if specified, default to registered credentials
-    s_gmail = sender_gmail or to_email
-    s_pass = sender_password or user_dict.get('password')
-    send_email_async(to_email, subject, html_body, text_body, sender_gmail=s_gmail, sender_password=s_pass)
+    send_email_async(to_email, subject, html_body, text_body)
 
 def send_complaint_confirmation_email(to_email, complaint, sender_gmail=None, sender_password=None):
     """
@@ -192,7 +206,7 @@ def send_complaint_confirmation_email(to_email, complaint, sender_gmail=None, se
     ward = complaint.get('ward', 'Ward 1')
     status = complaint.get('status', 'Submitted')
     description = complaint.get('description', '')
-    app_base_url = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    app_base_url = get_app_base_url()
     tracking_link = f"{app_base_url}/?track={complaint_id}"
 
     subject = f"Complaint Received [{complaint_id}] - SmartCivic AI Tracking"
@@ -299,7 +313,7 @@ def send_complaint_status_update_email(to_email, complaint, notes=None, sender_g
     status = complaint.get('status', 'Updated')
     assigned_to_name = complaint.get('assigned_to_name')
     ward = complaint.get('ward', 'Ward 1')
-    app_base_url = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    app_base_url = get_app_base_url()
     tracking_link = f"{app_base_url}/?track={complaint_id}"
 
     subject = f"Complaint Status Updated [{status}] - {complaint_id}"
@@ -397,7 +411,7 @@ def send_geotag_authority_alert(to_email, complaint, sender_gmail=None, sender_p
     lng = complaint.get('longitude')
     desc = complaint.get('description', '')
     gmaps_url = f"https://www.google.com/maps?q={lat},{lng}"
-    app_base_url = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    app_base_url = get_app_base_url()
 
     subject = f"🚨 GEOTAG ALERT [{complaint_id}]: New {category.upper()} in {ward}"
 
@@ -481,7 +495,7 @@ def send_geotag_worker_assignment(to_email, complaint, sender_gmail=None, sender
     lng = complaint.get('longitude')
     desc = complaint.get('description', '')
     gmaps_nav = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}"
-    app_base_url = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    app_base_url = get_app_base_url()
 
     subject = f"🛠️ WORK DISPATCH [{complaint_id}]: {category.upper()} in {ward}"
 
@@ -558,7 +572,7 @@ def send_authority_pending_approval_email(user_dict):
         return
     name = user_dict.get('name', 'Officer')
     ward = (user_dict.get('ward') or 'general').replace('_', ' ').title()
-    app_base_url = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    app_base_url = get_app_base_url()
 
     subject = f"🏛️ Authority Application Received - SmartCivic AI ({ward})"
 
@@ -632,7 +646,7 @@ def send_authority_approval_email(user_dict, secret_key):
         return
     name = user_dict.get('name', 'Officer')
     ward = (user_dict.get('ward') or 'general').replace('_', ' ').title()
-    app_base_url = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    app_base_url = get_app_base_url()
 
     subject = f"🔐 Official Authority Access Approved - Secret Key Enclosed [SmartCivic AI]"
 
@@ -713,7 +727,7 @@ def send_authority_key_regenerated_email(user_dict, secret_key):
         return
     name = user_dict.get('name', 'Officer')
     ward = (user_dict.get('ward') or 'general').replace('_', ' ').title()
-    app_base_url = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    app_base_url = get_app_base_url()
 
     subject = f"🔄 Secret Access Key Regenerated - SmartCivic AI ({ward})"
 
