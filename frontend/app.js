@@ -227,6 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initAuth();
     initTabs();
     initForms();
+    initManualAddressLocator();
     initJournalistEvents();
     initEnhancedCivicFeatures();
     
@@ -749,21 +750,91 @@ async function loadHeatmapData() {
 
 function renderHeatmapOnMap(mapObj, layerGroup, data) {
     if (!mapObj) return;
-    layerGroup.clearLayers();
+
+    // Clear vector/marker layers
+    if (layerGroup) {
+        layerGroup.clearLayers();
+    }
+
+    // Remove old heat layer if previously attached to this map
+    if (mapObj._heatLayer) {
+        try {
+            mapObj.removeLayer(mapObj._heatLayer);
+        } catch (e) {
+            console.warn("Could not remove previous heat layer:", e);
+        }
+        mapObj._heatLayer = null;
+    }
+
+    if (!data) return;
 
     const regionalSummary = data.regional_summary || [];
     const heatPoints = data.heat_points || [];
+    const rawHeatPoints = data.raw_heat_points || [];
 
-    if (regionalSummary.length === 0 && heatPoints.length === 0) return;
+    if (regionalSummary.length === 0 && heatPoints.length === 0 && rawHeatPoints.length === 0) return;
 
-    // 1. Draw Regional Density Circles (Red, Yellow, Green based on complaint count)
+    // 1. Build coordinates for L.heatLayer
+    const heatCoords = [];
+    if (Array.isArray(rawHeatPoints) && rawHeatPoints.length > 0) {
+        rawHeatPoints.forEach(pt => {
+            if (Array.isArray(pt) && pt.length >= 2) {
+                const lat = Number(pt[0]);
+                const lng = Number(pt[1]);
+                const intensity = Number(pt[2] || 0.6);
+                if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
+                    heatCoords.push([lat, lng, intensity]);
+                }
+            }
+        });
+    }
+
+    // Fallback if raw_heat_points wasn't provided or was empty
+    if (heatCoords.length === 0 && Array.isArray(heatPoints)) {
+        heatPoints.forEach(p => {
+            const lat = Number(p.lat !== undefined ? p.lat : (Array.isArray(p) ? p[0] : null));
+            const lng = Number(p.lng !== undefined ? p.lng : (Array.isArray(p) ? p[1] : null));
+            const intensity = Number(p.intensity || (Array.isArray(p) ? p[2] : 0.6) || 0.6);
+            if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
+                heatCoords.push([lat, lng, intensity]);
+            }
+        });
+    }
+
+    // 2. Render actual Leaflet Heatmap Layer (smooth gradient density)
+    if (window.L && typeof L.heatLayer === 'function' && heatCoords.length > 0) {
+        try {
+            const heatLayer = L.heatLayer(heatCoords, {
+                radius: 35,
+                blur: 22,
+                maxZoom: 16,
+                minOpacity: 0.4,
+                gradient: {
+                    0.2: '#06b6d4', // Cyan
+                    0.4: '#10b981', // Emerald green
+                    0.6: '#f59e0b', // Amber yellow
+                    0.8: '#ef4444', // Red
+                    1.0: '#991b1b'  // Deep red
+                }
+            });
+            heatLayer.addTo(mapObj);
+            mapObj._heatLayer = heatLayer;
+        } catch (heatErr) {
+            console.warn("Leaflet.heatLayer initialization error:", heatErr);
+        }
+    }
+
+    // 3. Draw Regional Density Circles (Red, Yellow, Green based on complaint count)
     regionalSummary.forEach(item => {
-        const count = item.count;
-        const lat = item.avg_lat;
-        const lng = item.avg_lng;
-        const ward = item.ward;
-        const color = item.color; // #ef4444 (Red > 5), #f59e0b (Yellow 3-5), #10b981 (Green 1-2)
-        const severity = item.severity;
+        const count = Number(item.count) || 0;
+        const lat = Number(item.avg_lat !== undefined ? item.avg_lat : (item.center ? item.center[0] : null));
+        const lng = Number(item.avg_lng !== undefined ? item.avg_lng : (item.center ? item.center[1] : null));
+        if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
+
+        const ward = item.ward || 'Ward';
+        const color = item.color || (count > 5 ? '#ef4444' : (count >= 3 ? '#f59e0b' : '#10b981'));
+        const severity = item.severity || item.level || (count > 5 ? 'High' : (count >= 3 ? 'Moderate' : 'Low'));
+        const highPriority = item.high_priority_count !== undefined ? item.high_priority_count : 0;
 
         let radius = 600;
         if (severity === 'High') radius = 1000;
@@ -772,7 +843,7 @@ function renderHeatmapOnMap(mapObj, layerGroup, data) {
         const circle = L.circle([lat, lng], {
             color: color,
             fillColor: color,
-            fillOpacity: 0.35,
+            fillOpacity: 0.25,
             radius: radius,
             weight: 2
         });
@@ -782,7 +853,7 @@ function renderHeatmapOnMap(mapObj, layerGroup, data) {
             <div class="heatmap-popup-content">
                 <h4 style="color: ${color};"><i class="fa-solid fa-fire"></i> ${formattedWard}</h4>
                 <p><strong>Density Status:</strong> <span style="color:${color}; font-weight:700;">${severity} Severity (${count} complaints)</span></p>
-                <p><strong>High Priority Issues:</strong> ${item.high_priority_count}</p>
+                <p><strong>High Priority Issues:</strong> ${highPriority}</p>
                 <p style="font-size:0.75rem; color:#64748b; margin-top:4px;">Color: ${severity === 'High' ? '🔴 Red (> 5)' : (severity === 'Moderate' ? '🟡 Yellow (3 - 5)' : '🟢 Green (1 - 2)')}</p>
             </div>
         `;
@@ -792,37 +863,62 @@ function renderHeatmapOnMap(mapObj, layerGroup, data) {
         // Central Badge
         const badgeIcon = L.divIcon({
             className: 'custom-heatmap-badge',
-            html: `<div style="background:${color}; color:#fff; font-weight:bold; font-size:11px; padding:3px 8px; border-radius:12px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.4); text-align:center; white-space:nowrap;">${formattedWard}: ${count} (${severity})</div>`,
-            iconSize: [110, 24],
-            iconAnchor: [55, 12]
+            html: `<div style="background:${color}; color:#fff; font-weight:bold; font-size:11px; padding:3px 8px; border-radius:12px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.4); text-align:center; white-space:nowrap; cursor:pointer;"><i class="fa-solid fa-layer-group"></i> ${formattedWard}: ${count} (${severity})</div>`,
+            iconSize: [120, 24],
+            iconAnchor: [60, 12]
         });
         const marker = L.marker([lat, lng], { icon: badgeIcon });
         marker.bindPopup(popupContent);
         layerGroup.addLayer(marker);
     });
 
-    // 2. Individual Point Markers / Heat Overlay
+    // 4. Individual Point Markers / Heat Overlay
     heatPoints.forEach(p => {
-        let pColor = p.priority === 'High' ? '#ef4444' : (p.priority === 'Medium' ? '#f59e0b' : '#10b981');
-        const ptMarker = L.circleMarker([p.lat, p.lng], {
-            radius: 7,
+        const lat = Number(p.lat !== undefined ? p.lat : (Array.isArray(p) ? p[0] : null));
+        const lng = Number(p.lng !== undefined ? p.lng : (Array.isArray(p) ? p[1] : null));
+        if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
+
+        const priority = p.priority || (p.intensity && p.intensity > 0.7 ? 'High' : (p.intensity > 0.4 ? 'Medium' : 'Low'));
+        let pColor = priority === 'High' ? '#ef4444' : (priority === 'Medium' ? '#f59e0b' : '#10b981');
+        const ptMarker = L.circleMarker([lat, lng], {
+            radius: 6,
             fillColor: pColor,
             color: '#ffffff',
             weight: 1.5,
             fillOpacity: 0.85
         });
+
+        const compId = p.complaint_id || 'COMP';
+        const cat = p.category ? p.category.toUpperCase() : 'CIVIC ISSUE';
+        const wardName = p.ward ? p.ward.replace('_', ' ').toUpperCase() : 'GENERAL';
+
         ptMarker.bindPopup(`
             <div class="heatmap-popup-content">
-                <b>${p.category ? p.category.toUpperCase() : 'COMPLAINT'}</b><br>
-                <span>ID: ${p.complaint_id}</span><br>
-                <span>Priority: <strong style="color:${pColor}">${p.priority}</strong></span><br>
-                <span>Ward: ${p.ward ? p.ward.replace('_', ' ').toUpperCase() : 'General'}</span>
+                <b>${cat}</b><br>
+                <span>ID: ${compId}</span><br>
+                <span>Priority: <strong style="color:${pColor}">${priority}</strong></span><br>
+                <span>Ward: ${wardName}</span>
             </div>
         `);
         layerGroup.addLayer(ptMarker);
     });
 
     layerGroup.addTo(mapObj);
+
+    // Auto-fit bounds if we have points and map is visible
+    setTimeout(() => {
+        try {
+            mapObj.invalidateSize();
+            if (heatCoords.length > 0) {
+                const bounds = L.latLngBounds(heatCoords.map(c => [c[0], c[1]]));
+                if (bounds.isValid()) {
+                    mapObj.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 });
+                }
+            }
+        } catch (err) {
+            // Ignore boundary errors
+        }
+    }, 150);
 }
 
 
@@ -841,24 +937,228 @@ function updateCoordsInForm(lat, lng) {
     document.getElementById('val-longitude').textContent = lng.toFixed(6);
     
     const lblAddress = document.getElementById('lbl-address-string');
+    const manualDisplay = document.getElementById('manual-address-display');
+    const manualInput = document.getElementById('manual-address-input');
+
     if (lblAddress) {
         lblAddress.textContent = 'Fetching address...';
-        if (reverseGeocodeTimer) clearTimeout(reverseGeocodeTimer);
-        reverseGeocodeTimer = setTimeout(() => {
-            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data && data.display_name) {
-                    lblAddress.textContent = data.display_name;
-                } else {
-                    lblAddress.textContent = `Coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-                }
-            })
-            .catch(() => {
-                lblAddress.textContent = `Coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-            });
-        }, 400);
     }
+    if (manualDisplay) {
+        manualDisplay.textContent = 'Fetching address...';
+    }
+
+    if (reverseGeocodeTimer) clearTimeout(reverseGeocodeTimer);
+    reverseGeocodeTimer = setTimeout(() => {
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+        .then(res => res.json())
+        .then(data => {
+            const addr = (data && data.display_name) ? data.display_name : `Coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            if (lblAddress) lblAddress.textContent = addr;
+            if (manualDisplay) manualDisplay.textContent = addr;
+            if (manualInput && document.activeElement !== manualInput) {
+                manualInput.value = addr;
+            }
+        })
+        .catch(() => {
+            const fallback = `Coordinates: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            if (lblAddress) lblAddress.textContent = fallback;
+            if (manualDisplay) manualDisplay.textContent = fallback;
+        });
+    }, 400);
+}
+
+// Manual Address Locator & Map Pinning
+function initManualAddressLocator() {
+    const addressInput = document.getElementById('manual-address-input');
+    const btnSearch = document.getElementById('btn-manual-address-search');
+    const iconSearch = document.getElementById('icon-manual-address-search');
+    const spinnerSearch = document.getElementById('spinner-manual-address-search');
+    const suggestionsBox = document.getElementById('manual-address-suggestions');
+    const btnFocusMap = document.getElementById('btn-focus-map-pin');
+    const mapPickerEl = document.getElementById('map-picker');
+
+    if (!addressInput || !btnSearch) return;
+
+    // Helper to focus and highlight map
+    const focusAndHighlightMap = (lat, lng, popupText = '') => {
+        if (pickerMarker && pickerMap) {
+            pickerMarker.setLatLng([lat, lng]);
+            pickerMap.setView([lat, lng], 17);
+            if (popupText) {
+                pickerMarker.bindPopup(`<strong>📍 Pinned Location:</strong><br><span style="font-size:0.8rem; color:#334155;">${popupText}</span>`).openPopup();
+            }
+            updateCoordsInForm(lat, lng);
+        }
+        if (mapPickerEl) {
+            mapPickerEl.classList.remove('map-highlight-pulse');
+            void mapPickerEl.offsetWidth; // trigger reflow
+            mapPickerEl.classList.add('map-highlight-pulse');
+            
+            // Scroll gently to map if on smaller screens
+            if (window.innerWidth < 1024) {
+                mapPickerEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    };
+
+    // Button to center map on currently pinned location
+    if (btnFocusMap) {
+        btnFocusMap.addEventListener('click', () => {
+            if (pickerMarker && pickerMap) {
+                const pos = pickerMarker.getLatLng();
+                const manualDisplay = document.getElementById('manual-address-display');
+                const label = manualDisplay ? manualDisplay.textContent : '';
+                focusAndHighlightMap(pos.lat, pos.lng, label);
+                showToast('Map Centered', `View centered on pinned coordinates: ${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`, 'info');
+            }
+        });
+    }
+
+    // Execute Geocode Search
+    const executeAddressSearch = async () => {
+        const query = addressInput.value.trim();
+        if (!query) {
+            showToast('Enter Address', 'Please type a street, landmark, or layout to search.', 'warning');
+            addressInput.focus();
+            return;
+        }
+
+        // Toggle loading spinner
+        btnSearch.disabled = true;
+        if (iconSearch) iconSearch.classList.add('hidden');
+        if (spinnerSearch) spinnerSearch.classList.remove('hidden');
+        if (suggestionsBox) suggestionsBox.classList.add('hidden');
+
+        try {
+            let lat = null;
+            let lng = null;
+            let displayName = '';
+            let resultsList = [];
+
+            // 1. Try backend forward geocode endpoint first
+            try {
+                const res = await fetch(`${API_BASE}/api/geocode?q=${encodeURIComponent(query)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.success && data.latitude && data.longitude) {
+                        lat = data.latitude;
+                        lng = data.longitude;
+                        displayName = data.display_name;
+                        resultsList = data.results || [];
+                    }
+                }
+            } catch (backendErr) {
+                console.warn('Backend geocode skipped, trying direct OSM fallback:', backendErr);
+            }
+
+            // 2. Direct OpenStreetMap fallback if backend had no match or network issue
+            if (lat === null || lng === null) {
+                let cleanQuery = query;
+                cleanQuery = cleanQuery.replace(/\brr\s*nagar\b/gi, 'Rajarajeshwari Nagar')
+                                       .replace(/\bjp\s*nagar\b/gi, 'JP Nagar')
+                                       .replace(/\bbtm\b(?:\s*layout)?/gi, 'BTM Layout')
+                                       .replace(/\bhsr\b(?:\s*layout)?/gi, 'HSR Layout')
+                                       .replace(/\bchunchgatta\b|\bchunchagatta\b/gi, 'Chunchaghatta')
+                                       .replace(/\bbeereshwara\b/gi, 'Bheereshwara')
+                                       .replace(/#\s*\d+[a-zA-Z]?/g, '')
+                                       .replace(/\b(flat|door|plot|house|no\.?|apt|apartment|bldg|building|room|floor|gate)\s*[:#-]?\s*\w+/gi, '')
+                                       .replace(/\b(near|nearby|opp|opposite|behind|beside|next to|in front of|adjacent to|close to|towards)\b/gi, '')
+                                       .replace(/\bbanglore\b/gi, 'Bangalore')
+                                       .replace(/\b(\d+)\s*ft\b/gi, '$1 Feet')
+                                       .replace(/\brd\b/gi, 'Road')
+                                       .replace(/[@*^%]/g, '')
+                                       .trim();
+                if (!cleanQuery) cleanQuery = query;
+
+                const clientAttempts = [cleanQuery];
+                if (!/(bangalore|bengaluru|mumbai|delhi|chennai|hyderabad|pune|mysore|mysuru)/i.test(cleanQuery)) {
+                    clientAttempts.push(`${cleanQuery}, Bangalore`);
+                }
+                const parts = cleanQuery.split(',').map(s => s.trim()).filter(Boolean);
+                if (parts.length >= 2) {
+                    clientAttempts.push(`${parts[0]}, ${parts[parts.length - 1]}`);
+                }
+
+                for (const att of clientAttempts) {
+                    try {
+                        const osmUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(att)}&countrycodes=in&viewbox=77.3,12.75,77.85,13.25&limit=5`;
+                        const osmRes = await fetch(osmUrl);
+                        if (osmRes.ok) {
+                            const osmData = await osmRes.json();
+                            if (Array.isArray(osmData) && osmData.length > 0) {
+                                lat = parseFloat(osmData[0].lat);
+                                lng = parseFloat(osmData[0].lon);
+                                displayName = osmData[0].display_name;
+                                resultsList = osmData.map(item => ({
+                                    display_name: item.display_name,
+                                    latitude: parseFloat(item.lat),
+                                    longitude: parseFloat(item.lon)
+                                }));
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        // ignore and try next attempt
+                    }
+                }
+            }
+
+            // 3. Process matches
+            if (lat !== null && lng !== null) {
+                focusAndHighlightMap(lat, lng, displayName);
+                
+                const manualDisplay = document.getElementById('manual-address-display');
+                if (manualDisplay) {
+                    manualDisplay.textContent = displayName || `Pinned: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+                }
+
+                showToast('Location Pinned!', `Map pointed to: ${displayName.split(',')[0]}`, 'success');
+
+                // If multiple results returned, render clickable suggestions
+                if (resultsList.length > 0 && suggestionsBox) {
+                    suggestionsBox.innerHTML = '';
+                    resultsList.slice(0, 4).forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.innerHTML = `<i class="fa-solid fa-location-dot"></i> <span>${item.display_name}</span>`;
+                        div.addEventListener('click', () => {
+                            focusAndHighlightMap(item.latitude, item.longitude, item.display_name);
+                            if (manualDisplay) manualDisplay.textContent = item.display_name;
+                            addressInput.value = item.display_name;
+                            suggestionsBox.classList.add('hidden');
+                            showToast('Pin Updated', `Map pin adjusted to selected location.`, 'info');
+                        });
+                        suggestionsBox.appendChild(div);
+                    });
+                    suggestionsBox.classList.remove('hidden');
+                }
+            } else {
+                showToast('Address Not Found', `Could not find "${query}". Try searching with landmark, road, or area name (e.g. RR Nagar, Kanakapura Road).`, 'error');
+            }
+        } catch (err) {
+            console.error('Geocode search failed:', err);
+            showToast('Search Error', 'Unable to reach geocoding service. Please tap directly on the map to set location.', 'warning');
+        } finally {
+            btnSearch.disabled = false;
+            if (iconSearch) iconSearch.classList.remove('hidden');
+            if (spinnerSearch) spinnerSearch.classList.add('hidden');
+        }
+    };
+
+    btnSearch.addEventListener('click', executeAddressSearch);
+    addressInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            executeAddressSearch();
+        }
+    });
+
+    // Close suggestions dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (suggestionsBox && !suggestionsBox.contains(e.target) && e.target !== addressInput && e.target !== btnSearch) {
+            suggestionsBox.classList.add('hidden');
+        }
+    });
 }
 
 // Forms & Inputs handling
@@ -1161,6 +1461,11 @@ function initForms() {
             // Immediately select tracker search
             document.getElementById('search-complaint-id').value = data.complaint_id;
             trackComplaint(data.complaint_id);
+
+            // Immediately refresh all complaint lists across dashboards so newest complaint appears at the top
+            if (typeof loadDashboardData === 'function') loadDashboardData();
+            if (typeof loadCitizenComplaints === 'function') loadCitizenComplaints();
+            if (typeof loadCitizenMyComplaints === 'function') loadCitizenMyComplaints();
         })
         .catch(err => {
             console.error(err);
@@ -1190,6 +1495,10 @@ function initForms() {
     // Setup filter change listeners
     document.getElementById('filter-status').addEventListener('change', loadDashboardData);
     document.getElementById('filter-priority').addEventListener('change', loadDashboardData);
+    const wardAuthorityFilter = document.getElementById('filter-ward-authority');
+    if (wardAuthorityFilter) {
+        wardAuthorityFilter.addEventListener('change', loadDashboardData);
+    }
 
     // Modal Close
     document.getElementById('btn-close-assignment-modal').addEventListener('click', () => {
@@ -1602,7 +1911,7 @@ function renderTrackerDetails(data) {
                 inspImg.style.display = 'none';
             }
         }
-        if (inspTime) inspTime.textContent = 'Corporator Site Verification';
+        if (inspTime) inspTime.textContent = 'Ward Authority Site Verification';
         if (inspNotes) inspNotes.textContent = data.inspection_notes || '';
         if (inspBox) inspBox.classList.remove('hidden');
         hasEvidence = true;
@@ -1732,11 +2041,24 @@ function loadDashboardData() {
     // 2. Table Complaints List
     const status = document.getElementById('filter-status').value;
     const priority = document.getElementById('filter-priority').value;
+    const wardSelect = document.getElementById('filter-ward-authority');
+    const wardVal = wardSelect ? wardSelect.value : 'all';
+
+    // Synchronize Authority Ward Badge display
+    const wardBadge = document.getElementById('authority-ward-badge');
+    if (wardBadge) {
+        if (wardVal === 'all') wardBadge.textContent = 'All Wards (Citywide)';
+        else if (wardVal === 'ward_1') wardBadge.textContent = 'Ward 1 (North-West)';
+        else if (wardVal === 'ward_2') wardBadge.textContent = 'Ward 2 (North-East)';
+        else if (wardVal === 'ward_3') wardBadge.textContent = 'Ward 3 (South / RR Nagar)';
+        else wardBadge.textContent = wardVal;
+    }
 
     let url = `${API_BASE}/api/complaints`;
     const params = [];
-    if (status) params.push(`status=${status}`);
-    if (priority) params.push(`priority=${priority}`);
+    if (wardVal) params.push(`ward=${encodeURIComponent(wardVal)}`);
+    if (status) params.push(`status=${encodeURIComponent(status)}`);
+    if (priority) params.push(`priority=${encodeURIComponent(priority)}`);
     if (params.length > 0) {
         url += `?${params.join('&')}`;
     }
@@ -1744,6 +2066,7 @@ function loadDashboardData() {
     fetch(url)
     .then(res => res.json())
     .then(complaints => {
+        if (!Array.isArray(complaints)) complaints = [];
         if (activeComplaintsList && activeComplaintsList.length > 0) {
             complaints.forEach(c => {
                 const cached = activeComplaintsList.find(x => x.complaint_id === c.complaint_id);
@@ -1770,7 +2093,11 @@ function renderComplaintsTable(complaints) {
     const catInput = document.getElementById('filter-category-authority');
     const catVal = catInput ? catInput.value : '';
 
-    let list = complaints;
+    let list = Array.isArray(complaints) ? [...complaints] : [];
+
+    // Strictly sort so newly raised complaints appear at the very top (Row 1)
+    list.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
     if (searchVal) {
         list = list.filter(c => 
             c.complaint_id.toLowerCase().includes(searchVal) ||
@@ -1791,13 +2118,20 @@ function renderComplaintsTable(complaints) {
     list.forEach(c => {
         const row = document.createElement('tr');
         
+        // Highlight newly raised complaints (within last 24 hours) with a prominent badge
+        const isRecent = (Date.now() - new Date(c.created_at || 0).getTime()) < 24 * 60 * 60 * 1000;
+        const newBadge = isRecent ? `<span class="badge" style="background: rgba(16,185,129,0.25); color: #34d399; font-size: 0.68rem; margin-left: 6px; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.4); font-weight: 700;">NEW</span>` : '';
+        if (isRecent) {
+            row.style.background = 'rgba(99, 102, 241, 0.07)';
+        }
+
         const formattedDate = window.formatDate ? formatDate(c.created_at) : new Date(c.created_at).toLocaleString();
         const slaDeadline = c.deadline ? (window.formatDate ? formatDate(c.deadline) : new Date(c.deadline).toLocaleDateString()) : '-';
 
-        const prioClass = `badge-${c.priority.toLowerCase()}`;
-        const statusClass = `badge-${c.status.replace(' ', '')}`;
+        const prioClass = `badge-${(c.priority || 'medium').toLowerCase()}`;
+        const statusClass = `badge-${(c.status || 'submitted').replace(' ', '')}`;
 
-        const catText = window.getCategoryTranslation ? getCategoryTranslation(c.category) : c.category.replace('_', ' ');
+        const catText = window.getCategoryTranslation ? getCategoryTranslation(c.category) : (c.category || 'Issue').replace('_', ' ');
         const prioText = window.getPriorityTranslation ? getPriorityTranslation(c.priority) : c.priority;
         const statusText = window.getStatusTranslation ? getStatusTranslation(c.status) : c.status;
         const unassignedText = window.t ? t('unassigned', 'Unassigned') : 'Unassigned';
@@ -1835,7 +2169,7 @@ function renderComplaintsTable(complaints) {
         }
 
         row.innerHTML = `
-            <td><strong>${c.complaint_id}</strong></td>
+            <td><strong>${c.complaint_id}</strong>${newBadge}</td>
             <td><span class="badge">${catText}</span></td>
             <td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${c.description}">
                 ${c.title ? `<strong>${c.title}</strong><br>` : ''}${c.description}
@@ -2623,7 +2957,11 @@ function renderCitizenComplaintsList(complaints) {
     if (!list) return;
 
     list.innerHTML = '';
-    if (complaints.length === 0) {
+    let arr = Array.isArray(complaints) ? [...complaints] : [];
+    // Strictly sort newest complaints at the top
+    arr.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    if (arr.length === 0) {
         const emptyMsg = window.t ? t('no_complaints_found', 'No reported city issues found.') : 'No reported city issues found.';
         list.innerHTML = `<p class="empty-list-message">${emptyMsg}</p>`;
         return;
@@ -2635,7 +2973,7 @@ function renderCitizenComplaintsList(complaints) {
     const notAssignedText = window.t ? t('not_assigned_yet', 'Not Assigned Yet') : 'Not Assigned Yet';
     const viewTimelineText = window.t ? t('view_live_timeline', 'View Live Timeline') : 'View Live Timeline';
 
-    complaints.forEach(c => {
+    arr.forEach(c => {
         const card = document.createElement('div');
         card.className = 'job-card';
         
@@ -3345,6 +3683,9 @@ function renderCitizenMyComplaintsList(complaints) {
         (c.citizen_id && parseInt(c.citizen_id) === parseInt(currentUser.id)) ||
         (c.gmail && currentUser.gmail && c.gmail.toLowerCase() === currentUser.gmail.toLowerCase())
     );
+
+    // Strictly sort newest complaints at the top
+    myIssues.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
     if (activeCitizenFilter !== 'all') {
         if (activeCitizenFilter === 'Active') {

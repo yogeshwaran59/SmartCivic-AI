@@ -202,6 +202,189 @@ def parse_geotag_endpoint():
         return jsonify({'found': False, 'error': str(e)}), 500
 
 # -------------------------------------------------------------
+# FORWARD GEOCODING ENDPOINT (MANUAL ADDRESS TO GPS COORDS)
+# -------------------------------------------------------------
+@routes_bp.route('/api/geocode', methods=['GET'])
+def geocode_address_endpoint():
+    """
+    Forward geocodes a manual street/landmark/area address to GPS coordinates.
+    Employs smart sanitization and hierarchical fallbacks for Indian addresses.
+    """
+    raw_query = request.args.get('q', '').strip()
+    if not raw_query:
+        return jsonify({'success': False, 'message': 'Address query parameter "q" is required.'}), 400
+
+    import urllib.request, urllib.parse, json, re
+
+    def query_nominatim(q_str):
+        try:
+            # Country biased to India, viewbox biased to Bangalore Metro region (loose boundary)
+            url = f"https://nominatim.openstreetmap.org/search?format=json&q={urllib.parse.quote(q_str)}&countrycodes=in&viewbox=77.3,12.75,77.85,13.25&limit=5"
+            req = urllib.request.Request(url, headers={'User-Agent': 'SmartCivicAI-Geocoder/1.0'})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                if data and isinstance(data, list) and len(data) > 0:
+                    return data
+        except Exception as e:
+            print(f"[GEOCODE QUERY WARNING] Failed '{q_str}': {e}")
+        return None
+
+    # 1. Normalize Acronyms & Common Bangalore Slang
+    norm_query = raw_query
+    norm_query = re.sub(r'\brr\s*nagar\b', 'Rajarajeshwari Nagar', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bjp\s*nagar\b', 'JP Nagar', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bbtm\b(?:\s*layout)?', 'BTM Layout', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bhsr\b(?:\s*layout)?', 'HSR Layout', norm_query, flags=re.I)
+    norm_query = re.sub(r'\brt\b(?:\s*nagar)?', 'RT Nagar', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bmg\s*road\b', 'MG Road', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bkr\s*puram\b', 'KR Puram', norm_query, flags=re.I)
+    norm_query = re.sub(r'\becity\b|\be-city\b', 'Electronic City', norm_query, flags=re.I)
+
+    # Phonetic & spelling normalizations
+    norm_query = re.sub(r'\bchunchgatta\b|\bchunchagatta\b', 'Chunchaghatta', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bbeereshwara\b', 'Bheereshwara', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bkormangala\b|\bkormanagala\b', 'Koramangala', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bindranagar\b', 'Indiranagar', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bjayanagr\b', 'Jayanagar', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bmarathalli\b', 'Marathahalli', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bwhite\s*feild\b|\bwhitefeild\b', 'Whitefield', norm_query, flags=re.I)
+    norm_query = re.sub(r'\bbanglore\b', 'Bangalore', norm_query, flags=re.I)
+
+    # 2. Extract 6-digit Indian pincode if present
+    pincode_match = re.search(r'\b(5[0-9]{5}|[1-9][0-9]{5})\b', raw_query)
+    pincode = pincode_match.group(1) if pincode_match else None
+
+    # 3. Clean landmark prepositions, door/flat identifiers, and road abbreviations
+    clean = re.sub(r'#\s*\d+[a-zA-Z]?', '', norm_query)
+    clean = re.sub(r'\b(flat|door|plot|house|no\.?|apt|apartment|bldg|building|room|floor|gate)\s*[:#-]?\s*\w+', '', clean, flags=re.I)
+    clean = re.sub(r'\b(near|nearby|opp|opposite|behind|beside|next to|in front of|adjacent to|close to|towards)\b', '', clean, flags=re.I)
+    clean = re.sub(r'\b(\d+)\s*ft\b', r'\1 Feet', clean, flags=re.I)
+    clean = re.sub(r'\brd\b', 'Road', clean, flags=re.I)
+    clean = re.sub(r'\bst\b', 'Street', clean, flags=re.I)
+    clean = re.sub(r'\blyt\b', 'Layout', clean, flags=re.I)
+    clean = re.sub(r'\bstg\b', 'Stage', clean, flags=re.I)
+    clean = re.sub(r'[@*^%]', '', clean)
+    clean = re.sub(r'\s+', ' ', clean).strip(' ,-#')
+
+    parts = [p.strip() for p in clean.split(',') if p.strip()]
+
+    attempts = []
+    if clean:
+        attempts.append(clean)
+    if norm_query != clean:
+        attempts.append(norm_query)
+
+    # Multi-part hierarchical decomposition
+    if len(parts) >= 3:
+        attempts.append(', '.join(parts[1:]))         # Strip top building/unit name
+        attempts.append(f'{parts[0]}, {parts[-1]}')   # Landmark + City
+        attempts.append(f'{parts[-2]}, {parts[-1]}')  # Area + City
+        attempts.append(f'{parts[0]}, {parts[1]}')    # Landmark + Area
+    elif len(parts) == 2:
+        attempts.append(f'{parts[0]}, {parts[1]}')
+
+    # Detect if city is specified; if not, test with Bangalore & area tokens
+    has_city = any(c in clean.lower() for c in ['bangalore', 'bengaluru', 'mumbai', 'delhi', 'chennai', 'hyderabad', 'kolkata', 'pune', 'mysore', 'mysuru'])
+    if not has_city:
+        attempts.append(f'{clean}, Bangalore')
+        if len(parts) >= 2:
+            attempts.append(f'{parts[-1]}, Bangalore')
+            attempts.append(f'{parts[0]}, Bangalore')
+        else:
+            words = clean.split()
+            if len(words) >= 2:
+                attempts.append(f'{words[0]}, Bangalore')
+                attempts.append(f'{" ".join(words[-2:])}, Bangalore')
+
+    # Pincode + Area fallback
+    if pincode:
+        if parts:
+            attempts.append(f'{parts[0]} {pincode}')
+        attempts.append(f'{pincode}, India')
+
+    # Deduplicate candidate queries preserving order
+    seen = set()
+    deduped_attempts = []
+    for att in attempts:
+        c_str = re.sub(r'\s+', ' ', att).strip(' ,')
+        if c_str and c_str.lower() not in seen:
+            seen.add(c_str.lower())
+            deduped_attempts.append(c_str)
+
+    # Key terms from user for scoring
+    raw_lower = raw_query.lower()
+    user_tokens = [w for w in re.split(r'\W+', norm_query.lower()) if len(w) >= 3]
+
+    best_match = None
+    best_score = -1
+    matched_query_used = None
+    all_clean_results = []
+
+    for attempt in deduped_attempts[:6]:
+        results = query_nominatim(attempt)
+        if results:
+            for item in results:
+                name_lower = (item.get('display_name') or '').lower()
+                
+                # Relevance scoring
+                score = 0
+                for token in user_tokens:
+                    if token in name_lower:
+                        score += 20
+                
+                # Big boost for specific locality matches
+                if ('rajarajeshwari' in norm_query.lower() or 'rr nagar' in raw_lower) and 'rajarajeshwari' in name_lower:
+                    score += 100
+                if ('chunch' in norm_query.lower() or 'beereshwara' in norm_query.lower()) and ('chunch' in name_lower or 'bheereshwara' in name_lower):
+                    score += 100
+                if 'jp nagar' in norm_query.lower() and 'jp nagar' in name_lower:
+                    score += 80
+                
+                if score > best_score:
+                    best_score = score
+                    best_match = item
+                    matched_query_used = attempt
+
+                try:
+                    all_clean_results.append({
+                        'display_name': item.get('display_name'),
+                        'latitude': float(item.get('lat')),
+                        'longitude': float(item.get('lon')),
+                        'type': item.get('type'),
+                        'score': score
+                    })
+                except (ValueError, TypeError):
+                    continue
+
+            # If we found a high confidence match (score >= 40), we can stop early
+            if best_score >= 40:
+                break
+
+    if best_match:
+        lat = float(best_match['lat'])
+        lng = float(best_match['lon'])
+        ward = get_ward_by_location(lat, lng)
+
+        # Sort results by score descending
+        all_clean_results.sort(key=lambda x: x.get('score', 0), reverse=True)
+
+        return jsonify({
+            'success': True,
+            'query': raw_query,
+            'matched_query': matched_query_used,
+            'latitude': lat,
+            'longitude': lng,
+            'ward': ward,
+            'display_name': best_match.get('display_name'),
+            'results': all_clean_results[:6]
+        }), 200
+
+    return jsonify({
+        'success': False,
+        'message': f'Could not find coordinates for "{raw_query}". Try adding a nearby landmark, main road, or area.'
+    }), 404
+
+# -------------------------------------------------------------
 # COMPLAINTS ENDPOINTS
 # -------------------------------------------------------------
 @routes_bp.route('/api/complaints', methods=['POST'])
@@ -281,7 +464,7 @@ def create_complaint():
             if detected_lang != 'en' and multi_ai.get('title_en'):
                 title = f"{multi_ai.get('title_en')} in {ward.replace('_', ' ').title()}"
             else:
-                title = f"{category.replace('_', ' ').title()} in {ward.replace('_', ' ').title()}"
+                title = f"{(category or 'Civic Issue').replace('_', ' ').title()} in {ward.replace('_', ' ').title()}"
 
         # Compute SLA Deadline based on priority
         deadline_hours = 24 if priority == 'High' else (48 if priority == 'Medium' else 72)
@@ -466,12 +649,14 @@ def get_complaints():
         redirected_to_journalist = request.args.get('redirected_to_journalist')
         created_after = request.args.get('created_after')
 
-        # Role-based ward isolation:
-        # A corporator (role='authority') should only see their assigned ward, unless higher authority or admin
-        if current_user and current_user.role == 'authority' and current_user.ward and current_user.ward != 'all':
+        # Role-based ward isolation & ward filter:
+        # If client explicitly specifies a ward filter (e.g., ward='all', 'ward_1', 'ward_2', 'ward_3'):
+        if ward:
+            if ward.lower() != 'all':
+                query = query.filter_by(ward=ward)
+        # If no explicit ward param is passed:
+        elif current_user and current_user.role == 'authority' and current_user.ward and current_user.ward.lower() not in ['all', 'general', 'none', '']:
             query = query.filter_by(ward=current_user.ward)
-        elif ward:
-            query = query.filter_by(ward=ward)
 
         if status:
             query = query.filter_by(status=status)
@@ -525,20 +710,33 @@ def get_heatmap_summary():
         complaints = Complaint.query.all()
         ward_map = {}
         for c in complaints:
+            if c.latitude is None or c.longitude is None:
+                continue
+            try:
+                clat = float(c.latitude)
+                clng = float(c.longitude)
+            except (ValueError, TypeError):
+                continue
+
             w = c.ward or 'General Ward'
             if w not in ward_map:
                 ward_map[w] = {
                     'ward': w,
                     'count': 0,
+                    'high_count': 0,
                     'lats': [],
                     'lngs': []
                 }
             ward_map[w]['count'] += 1
-            ward_map[w]['lats'].append(c.latitude)
-            ward_map[w]['lngs'].append(c.longitude)
+            if c.priority == 'High':
+                ward_map[w]['high_count'] += 1
+            ward_map[w]['lats'].append(clat)
+            ward_map[w]['lngs'].append(clng)
 
         summary = []
-        points = []
+        raw_heat_points = []
+        heat_points = []
+
         for w, data in ward_map.items():
             avg_lat = sum(data['lats']) / len(data['lats']) if data['lats'] else 12.97
             avg_lng = sum(data['lngs']) / len(data['lngs']) if data['lngs'] else 77.59
@@ -550,17 +748,38 @@ def get_heatmap_summary():
                 'ward': w,
                 'count': cnt,
                 'level': level,
+                'severity': level,
                 'color': color,
-                'center': [avg_lat, avg_lng]
+                'center': [avg_lat, avg_lng],
+                'avg_lat': avg_lat,
+                'avg_lng': avg_lng,
+                'high_priority_count': data['high_count']
             })
 
-            # Add individual heat points
-            for lat, lng in zip(data['lats'], data['lngs']):
-                points.append([lat, lng, 0.7 if cnt > 5 else 0.4])
+        for c in complaints:
+            if c.latitude is not None and c.longitude is not None:
+                try:
+                    lat = float(c.latitude)
+                    lng = float(c.longitude)
+                except (ValueError, TypeError):
+                    continue
+                intensity = 0.9 if c.priority == 'High' else (0.6 if c.priority == 'Medium' else 0.4)
+                raw_heat_points.append([lat, lng, intensity])
+                heat_points.append({
+                    'complaint_id': c.complaint_id,
+                    'lat': lat,
+                    'lng': lng,
+                    'category': c.category,
+                    'priority': c.priority,
+                    'status': c.status,
+                    'ward': c.ward or 'General',
+                    'intensity': intensity
+                })
 
         return jsonify({
             'regional_summary': summary,
-            'heat_points': points
+            'heat_points': heat_points,
+            'raw_heat_points': raw_heat_points
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -636,7 +855,7 @@ def update_complaint(id):
                 return jsonify({'error': 'Unauthorized: You can only update complaints assigned to you.'}), 403
 
         # Enforce corporator ward permission check
-        if current_user and current_user.role == 'authority' and current_user.ward and current_user.ward != 'all':
+        if current_user and current_user.role == 'authority' and current_user.ward and current_user.ward.lower() not in ['all', 'general', 'none', '']:
             if complaint.ward != current_user.ward:
                 return jsonify({'error': f"Unauthorized: Corporator belongs to {current_user.ward}, but complaint is in {complaint.ward}."}), 403
 
@@ -764,7 +983,7 @@ def verify_initial_complaint(id):
             return jsonify({'error': 'Complaint not found'}), 404
 
         current_user = get_current_user_from_request()
-        if current_user and current_user.role == 'authority' and current_user.ward and current_user.ward != 'all':
+        if current_user and current_user.role == 'authority' and current_user.ward and current_user.ward.lower() not in ['all', 'general', 'none', '']:
             if complaint.ward != current_user.ward:
                 return jsonify({'error': f"Unauthorized: Corporator belongs to {current_user.ward}, but complaint is in {complaint.ward}."}), 403
 
@@ -1189,7 +1408,7 @@ def get_notifications():
 
         user_id = request.args.get('user_id') or (current_user.id if current_user else None)
         user_role = request.args.get('user_role') or (current_user.role if current_user else None)
-        ward = request.args.get('ward') or (current_user.ward if current_user and current_user.ward != 'all' else None)
+        ward = request.args.get('ward') or (current_user.ward if current_user and current_user.ward.lower() not in ['all', 'general', 'none', ''] else None)
         email = request.args.get('email') or (current_user.gmail if current_user else None)
 
         filters = []
@@ -1723,7 +1942,7 @@ def exotel_webhook():
         caller_phone = raw_params.get('From') or raw_params.get('CallFrom') or raw_params.get('Caller') or ''
 
         if digits:
-            digits = str(digits).strip('"\'').strip()
+            digits = digits.strip('"\'').strip()
 
         menu_choice = int(digits) if digits and digits.isdigit() else 1
         category_map = {

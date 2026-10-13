@@ -83,6 +83,7 @@
     .nav-title span {
       background: linear-gradient(135deg, #818cf8, #2dd4bf);
       -webkit-background-clip: text;
+      background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
@@ -609,10 +610,10 @@
                   <span class="status-badge pending">⏳ Awaiting Key</span>
                 </td>
                 <td style="text-align: right;">
-                  <button class="btn-action btn-approve" onclick="approveAuthority({{ user.id }}, '{{ user.name }}')">
+                  <button class="btn-action btn-approve" data-id="{{ user.id }}" data-name="{{ user.name }}" onclick="approveAuthority(this.dataset.id, this.dataset.name)">
                     ✔ Approve & Issue Secret Key
                   </button>
-                  <button class="btn-action btn-reject" onclick="rejectAuthority({{ user.id }}, '{{ user.name }}')">
+                  <button class="btn-action btn-reject" data-id="{{ user.id }}" data-name="{{ user.name }}" onclick="rejectAuthority(this.dataset.id, this.dataset.name)">
                     ✖ Decline
                   </button>
                 </td>
@@ -688,15 +689,15 @@
                   {% endif %}
                 </td>
                 <td style="text-align: right;">
-                  <button class="btn-action btn-regen" onclick="regenerateKey({{ user.id }}, '{{ user.name }}')">
+                  <button class="btn-action btn-regen" data-id="{{ user.id }}" data-name="{{ user.name }}" onclick="regenerateKey(this.dataset.id, this.dataset.name)">
                     🔄 Reset Key
                   </button>
                   {% if user.approval_status == 'suspended' %}
-                  <button class="btn-action btn-approve" onclick="toggleStatus({{ user.id }}, 'approve')">
+                  <button class="btn-action btn-approve" data-id="{{ user.id }}" onclick="toggleStatus(this.dataset.id, 'approve')">
                     ✔ Re-activate
                   </button>
                   {% else %}
-                  <button class="btn-action btn-suspend" onclick="toggleStatus({{ user.id }}, 'suspend')">
+                  <button class="btn-action btn-suspend" data-id="{{ user.id }}" onclick="toggleStatus(this.dataset.id, 'suspend')">
                     🚫 Suspend
                   </button>
                   {% endif %}

@@ -51,7 +51,7 @@
             <!-- Navbar Nav -->
             <nav class="nav-links">
                 <button class="nav-btn active" data-tab="citizen-portal" id="btn-citizen"><i class="fa-solid fa-users"></i> <span data-i18n="tab_citizen">Citizen Portal</span></button>
-                <button class="nav-btn" data-tab="authority-dashboard" id="btn-authority"><i class="fa-solid fa-shield-halved"></i> <span data-i18n="tab_authority">Corporator Portal</span></button>
+                <button class="nav-btn" data-tab="authority-dashboard" id="btn-authority"><i class="fa-solid fa-shield-halved"></i> <span data-i18n="tab_authority">Ward Authority Portal</span></button>
                 <button class="nav-btn" data-tab="higher-authority-dashboard" id="btn-higher-authority"><i class="fa-solid fa-landmark-flag"></i> <span data-i18n="tab_higher_authority">Higher Authority</span></button>
                 <button class="nav-btn" data-tab="worker-module" id="btn-worker"><i class="fa-solid fa-helmet-safety"></i> <span data-i18n="tab_worker">Worker Module</span></button>
                 <button class="nav-btn" data-tab="journalist-dashboard" id="btn-journalist"><i class="fa-solid fa-newspaper"></i> <span data-i18n="tab_journalist">Journalist Dashboard</span></button>
@@ -70,22 +70,41 @@
                     <span class="notification-badge notif-badge hidden" id="header-notif-badge">0</span>
                 </button>
 
-                <!-- Header Luxury Language Switcher Pill -->
-                <div class="header-lang-wrapper" id="header-lang-wrapper">
-                    <div class="lang-selector-pill" role="group" aria-label="Language Selector">
-                        <i class="fa-solid fa-globe lang-globe-icon" data-i18n-title="select_language" title="Language Selector"></i>
-                        <div class="lang-btn-group">
-                            <button type="button" class="btn-lang active" data-lang="en" title="English"><span class="lang-tag">EN</span> English</button>
-                            <button type="button" class="btn-lang" data-lang="kn" title="ಕನ್ನಡ (Kannada)"><span class="lang-tag">KN</span> ಕನ್ನಡ</button>
-                            <button type="button" class="btn-lang" data-lang="hi" title="हिंदी (Hindi)"><span class="lang-tag">HI</span> हिंदी</button>
-                            <button type="button" class="btn-lang" data-lang="te" title="తెలుగు (Telugu)"><span class="lang-tag">TE</span> తెలుగు</button>
-                        </div>
+                <!-- Header Luxury Language Dropdown -->
+                <div class="lang-dropdown-wrapper" id="lang-dropdown-wrapper">
+                    <button type="button" class="lang-dropdown-btn" id="lang-dropdown-trigger" aria-haspopup="true" aria-expanded="false" title="Select Language">
+                        <i class="fa-solid fa-globe lang-globe-icon"></i>
+                        <span class="active-lang-tag" id="current-lang-tag">EN</span>
+                        <span class="active-lang-name" id="current-lang-name">English</span>
+                        <i class="fa-solid fa-chevron-down lang-chevron"></i>
+                    </button>
+                    <div class="lang-dropdown-menu hidden" id="lang-dropdown-menu" role="menu">
+                        <button type="button" class="btn-lang-option active" data-lang="en" role="menuitem">
+                            <span class="lang-tag">EN</span>
+                            <span class="lang-name">English</span>
+                            <i class="fa-solid fa-check checkmark"></i>
+                        </button>
+                        <button type="button" class="btn-lang-option" data-lang="kn" role="menuitem">
+                            <span class="lang-tag">KN</span>
+                            <span class="lang-name">ಕನ್ನಡ</span>
+                            <i class="fa-solid fa-check checkmark"></i>
+                        </button>
+                        <button type="button" class="btn-lang-option" data-lang="hi" role="menuitem">
+                            <span class="lang-tag">HI</span>
+                            <span class="lang-name">हिंदी</span>
+                            <i class="fa-solid fa-check checkmark"></i>
+                        </button>
+                        <button type="button" class="btn-lang-option" data-lang="te" role="menuitem">
+                            <span class="lang-tag">TE</span>
+                            <span class="lang-name">తెలుగు</span>
+                            <i class="fa-solid fa-check checkmark"></i>
+                        </button>
                     </div>
                 </div>
 
                 <div class="user-status-wrapper hidden" id="user-profile-banner">
                     <button class="btn-user-profile-link header-profile-btn" id="btn-header-profile" title="View & Edit Profile">
-                        <i class="fa-solid fa-user-circle text-accent-indigo"></i> <strong id="lbl-user-name" data-i18n="guest">Guest</strong> (<span id="lbl-user-role">citizen</span>)
+                        <i class="fa-solid fa-user-circle text-accent-indigo"></i> <strong id="lbl-user-name" data-i18n="guest">Guest</strong> <span id="lbl-user-role" class="user-role-badge">citizen</span>
                     </button>
                     <button class="btn-logout" id="btn-logout-session"><i class="fa-solid fa-right-from-bracket"></i> <span data-i18n="logout">Logout</span></button>
                 </div>
@@ -212,6 +231,40 @@
                                 <span><span data-i18n="linked_id">Linked ID:</span> <strong id="dup-linked-id">COMP-XXXX</strong></span>
                                 <button type="button" class="btn-small" id="btn-view-duplicate" data-i18n="track_linked_complaint">Track Linked Complaint</button>
                             </div>
+                        </div>
+
+                        <!-- Manual Address & Map Pin Section -->
+                        <div class="glass-card manual-address-card" id="manual-address-card">
+                            <div class="manual-address-header">
+                                <h3><i class="fa-solid fa-map-location-dot text-accent-teal"></i> <span data-i18n="manual_address_title">Manual Address & Map Pin</span></h3>
+                                <span class="badge badge-teal"><i class="fa-solid fa-crosshairs"></i> <span data-i18n="manual_address_badge">Live Pin</span></span>
+                            </div>
+                            <p class="section-subtitle" data-i18n="manual_address_subtitle">Type street, landmark, or layout to automatically point the map pin.</p>
+                            
+                            <div class="search-box address-search-box">
+                                <input type="text" id="manual-address-input" data-i18n-placeholder="manual_address_placeholder" placeholder="e.g. Holiday Village Road, RR Nagar 560098...">
+                                <button type="button" id="btn-manual-address-search" title="Locate & Pin on Map" data-i18n-title="locate_on_map">
+                                    <i class="fa-solid fa-location-crosshairs" id="icon-manual-address-search"></i>
+                                    <i class="fa-solid fa-circle-notch fa-spin hidden" id="spinner-manual-address-search"></i>
+                                </button>
+                            </div>
+
+                            <!-- Live Active Pinned Location Status -->
+                            <div id="manual-address-status-box" class="manual-address-status-box">
+                                <div class="address-status-row">
+                                    <i class="fa-solid fa-location-dot text-accent-teal"></i>
+                                    <div class="address-status-text">
+                                        <div class="address-status-label" data-i18n="current_pinned_label">Current Pinned Location:</div>
+                                        <div id="manual-address-display" class="address-status-val">Tap map or type address to pin</div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-small btn-view-pinned" id="btn-focus-map-pin" title="Center Map on Pin" data-i18n="btn_focus_pin">
+                                    <i class="fa-solid fa-eye"></i> View on Map
+                                </button>
+                            </div>
+
+                            <!-- Location Suggestions Dropdown (appears when multiple results or matching) -->
+                            <div id="manual-address-suggestions" class="manual-address-suggestions hidden"></div>
                         </div>
 
                         <!-- Search Box -->
@@ -494,11 +547,20 @@
                     <div class="table-header" style="flex-wrap: wrap; gap: 12px;">
                         <div style="display: flex; align-items: center; gap: 12px;">
                             <h2><i class="fa-solid fa-list-check text-accent-indigo"></i> <span data-i18n="active_registry_title">Active Complaints Registry</span></h2>
-                            <span id="authority-ward-badge" class="badge" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; padding: 4px 10px; font-size: 0.8rem; border-radius: 6px;">Ward 1</span>
+                            <span id="authority-ward-badge" class="badge" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; padding: 4px 10px; font-size: 0.8rem; border-radius: 6px;">All Wards (Citywide)</span>
                         </div>
                         
                         <!-- Filters -->
                         <div class="filters-row" style="flex-wrap: wrap; gap: 10px;">
+                            <div class="filter-group">
+                                <label for="filter-ward-authority" data-i18n="ha_filter_ward"><i class="fa-solid fa-map-location-dot"></i> Ward:</label>
+                                <select id="filter-ward-authority" style="padding: 6px 12px; border-radius: 8px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text-primary); font-size: 0.85rem;">
+                                    <option value="all" data-i18n="ha_all_wards">All Wards (Citywide)</option>
+                                    <option value="ward_1">Ward 1 (North-West)</option>
+                                    <option value="ward_2">Ward 2 (North-East)</option>
+                                    <option value="ward_3">Ward 3 (South / RR Nagar)</option>
+                                </select>
+                            </div>
                             <div class="filter-group">
                                 <label for="filter-search-authority"><i class="fa-solid fa-search"></i></label>
                                 <input type="text" id="filter-search-authority" data-i18n-placeholder="filter_search_placeholder" placeholder="Search ID, title, keyword..." style="padding: 6px 12px; border-radius: 8px; border: 1px solid var(--panel-border); background: rgba(0,0,0,0.2); color: var(--text-primary); font-size: 0.85rem; width: 180px;">
@@ -610,10 +672,10 @@
                     </div>
                 </div>
 
-                <!-- Corporator Performance Leaderboard Card -->
+                <!-- Ward Authority Performance Leaderboard Card -->
                 <div class="glass-card" style="margin-top: 24px;">
                     <div class="table-header">
-                        <h2><i class="fa-solid fa-trophy text-accent-amber"></i> <span data-i18n="ward_performance_title">Ward Corporator Performance Metrics</span></h2>
+                        <h2><i class="fa-solid fa-trophy text-accent-amber"></i> <span data-i18n="ward_performance_title">Ward Authority Performance Metrics</span></h2>
                         <p class="section-subtitle" data-i18n="ward_performance_subtitle">Real-time resolution rates, average resolution speed, and citizen satisfaction ratings.</p>
                     </div>
                     <div class="table-scroll-container">
@@ -740,10 +802,10 @@
                     </div>
                 </div>
 
-                <!-- Corporator Performance Leaderboard Across Wards -->
+                <!-- Ward Authority Performance Leaderboard Across Wards -->
                 <div class="glass-card" style="margin-bottom: 24px;">
                     <div class="table-header">
-                        <h2><i class="fa-solid fa-trophy text-accent-amber"></i> <span data-i18n="ha_leaderboard_title">Ward Corporator Performance Leaderboard</span></h2>
+                        <h2><i class="fa-solid fa-trophy text-accent-amber"></i> <span data-i18n="ha_leaderboard_title">Ward Authority Performance Leaderboard</span></h2>
                         <p class="section-subtitle" data-i18n="ha_leaderboard_subtitle">Real metrics calculated from resolved complaints, resolution times, and citizen satisfaction ratings.</p>
                     </div>
                     <div class="table-scroll-container">
@@ -752,7 +814,7 @@
                                 <tr>
                                     <th data-i18n="th_rank">Rank</th>
                                     <th data-i18n="th_ward">Ward</th>
-                                    <th data-i18n="th_responsible_corporator">Responsible Corporator</th>
+                                    <th data-i18n="th_responsible_corporator">Responsible Ward Authority</th>
                                     <th data-i18n="th_total_issues">Total Issues</th>
                                     <th data-i18n="th_resolved">Resolved</th>
                                     <th data-i18n="th_resolution_percent">Resolution %</th>
@@ -1067,7 +1129,7 @@
                                 </button>
                                 <button type="button" class="role-card" data-role="authority">
                                     <i class="fa-solid fa-shield-halved"></i>
-                                    <span data-i18n="role_authority">CORPORATOR</span>
+                                    <span data-i18n="role_authority">WARD AUTHORITY</span>
                                 </button>
                                 <button type="button" class="role-card" data-role="higher_authority">
                                     <i class="fa-solid fa-landmark"></i>
@@ -1126,7 +1188,7 @@
                             </button>
                             <button type="button" class="role-card" data-login-role="authority">
                                 <i class="fa-solid fa-shield-halved"></i>
-                                <span data-i18n="role_authority">CORPORATOR</span>
+                                <span data-i18n="role_authority">WARD AUTHORITY</span>
                             </button>
                             <button type="button" class="role-card" data-login-role="higher_authority">
                                 <i class="fa-solid fa-landmark"></i>
@@ -1402,7 +1464,7 @@
             </div>
         </div>
 
-        <!-- CORPORATOR SITE INSPECTION MODAL -->
+        <!-- WARD AUTHORITY SITE INSPECTION MODAL -->
         <div id="inspection-modal" class="modal-overlay hidden" style="z-index: 100000;">
             <div class="glass-card modal-content" style="max-width: 500px; width: 92%;">
                 <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 12px; margin-bottom: 16px;">
@@ -1414,7 +1476,7 @@
                 </div>
                 <div class="modal-body">
                     <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px;" data-i18n="inspection_desc">
-                        Ward corporators can record physical site inspection visits and upload on-site verification photos.
+                        Ward authorities can record physical site inspection visits and upload on-site verification photos.
                     </p>
                     <form id="inspection-form">
                         <input type="hidden" id="inspection-complaint-id">
@@ -1488,7 +1550,7 @@
                 </div>
                 <div class="modal-body">
                     <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px;" data-i18n="admin_notice_desc">
-                        Send an urgent executive directive or show-cause notice to the assigned corporator and dispatch worker.
+                        Send an urgent executive directive or show-cause notice to the assigned ward authority and dispatch worker.
                     </p>
                     <form id="admin-notice-form">
                         <input type="hidden" id="admin-notice-complaint-id">

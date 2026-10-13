@@ -8,6 +8,43 @@ from scheduler import init_scheduler
 
 load_dotenv()
 
+_cached_db_hostaddr = None
+
+def get_db_hostaddr(database_url):
+    """
+    If local/Wi-Fi DNS fails to resolve Neon hostname (e.g. 'Query refused' on restricted Wi-Fi),
+    resolve via Google DNS over HTTPS to obtain the IPv4 address directly for psycopg2 hostaddr.
+    """
+    global _cached_db_hostaddr
+    if _cached_db_hostaddr:
+        return _cached_db_hostaddr
+    try:
+        import socket
+        from urllib.parse import urlparse
+        parsed = urlparse(database_url)
+        hostname = parsed.hostname
+        if not hostname:
+            return None
+        try:
+            socket.gethostbyname(hostname)
+            return None  # Standard OS DNS resolved successfully
+        except Exception:
+            pass
+
+        import urllib.request
+        import json
+        req = urllib.request.Request(f'https://dns.google/resolve?name={hostname}', headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            for ans in data.get('Answer', []):
+                if ans.get('type') == 1:
+                    _cached_db_hostaddr = ans.get('data')
+                    print(f"[DNS Resilience] Resolved database host '{hostname}' -> {_cached_db_hostaddr} via Google DNS.")
+                    return _cached_db_hostaddr
+    except Exception as exc:
+        print(f"[DNS Resilience Notice] Fallback DNS query: {exc}")
+    return None
+
 def create_app(config=None):
     # Setup flask to serve frontend files from the relative '../frontend' folder
     app = Flask(__name__, static_folder='../frontend', static_url_path='')
@@ -22,10 +59,16 @@ def create_app(config=None):
         if database_url.startswith('postgres://'):
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
         app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        
+        connect_args = {'connect_timeout': 10}
+        hostaddr = get_db_hostaddr(database_url)
+        if hostaddr:
+            connect_args['hostaddr'] = hostaddr
+
         app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
             'pool_pre_ping': True,
             'pool_recycle': 280,
-            'connect_args': {'connect_timeout': 10}
+            'connect_args': connect_args
         }
     else:
         db_path = os.path.join(os.path.dirname(__file__), 'smartcivic.db')

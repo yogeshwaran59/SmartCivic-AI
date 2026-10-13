@@ -174,6 +174,9 @@ class ComplaintEvidence(db.Model):
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -202,6 +205,9 @@ class Notification(db.Model):
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=utc_now)
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -227,6 +233,9 @@ class Comment(db.Model):
     message = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now)
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -247,6 +256,9 @@ class Feedback(db.Model):
     satisfaction = db.Column(db.String(20), nullable=False)  # 'satisfactory' | 'unsatisfactory'
     comment = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {
@@ -271,6 +283,9 @@ class Escalation(db.Model):
     is_auto = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=utc_now)
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -294,6 +309,9 @@ class AuditLog(db.Model):
     action = db.Column(db.String(100), nullable=False)
     details = db.Column(db.Text, nullable=True)
     timestamp = db.Column(db.DateTime, default=utc_now)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def to_dict(self):
         return {
@@ -334,9 +352,14 @@ class JournalistReport(db.Model):
 def log_audit(action, complaint_id=None, user=None, details=None, user_id=None, user_name=None, user_role=None, **kwargs):
     """Utility helper to record an audit entry."""
     try:
-        uid = user_id or (user.id if user and hasattr(user, 'id') else (user.get('id') if isinstance(user, dict) else None))
-        uname = user_name or (user.name if user and hasattr(user, 'name') else (user.get('name') if isinstance(user, dict) else 'System'))
-        urole = user_role or (user.role if user and hasattr(user, 'role') else (user.get('role') if isinstance(user, dict) else 'system'))
+        if isinstance(user, dict):
+            uid = user_id or user.get('id')
+            uname = user_name or user.get('name') or 'System'
+            urole = user_role or user.get('role') or 'system'
+        else:
+            uid = user_id or getattr(user, 'id', None)
+            uname = user_name or getattr(user, 'name', None) or 'System'
+            urole = user_role or getattr(user, 'role', None) or 'system'
         entry = AuditLog(
             complaint_id=complaint_id,
             user_id=uid,
