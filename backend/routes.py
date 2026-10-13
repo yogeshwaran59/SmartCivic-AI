@@ -431,14 +431,18 @@ def create_complaint():
     Supports title, category, priority, GPS, photos, videos, and SLA deadline calculation.
     """
     try:
-        title = request.form.get('title', '').strip()
-        description = request.form.get('description', '').strip()
-        latitude_str = request.form.get('latitude')
-        longitude_str = request.form.get('longitude')
-        contact = request.form.get('contact', '').strip()
-        citizen_gmail = request.form.get('gmail') or request.form.get('citizen_gmail') or ''
-        raw_category = request.form.get('category', '').strip()
-        raw_priority = request.form.get('priority', '').strip()
+        json_data = request.get_json(silent=True) or {}
+        title = (request.form.get('title') or json_data.get('title') or '').strip()
+        description = (request.form.get('description') or json_data.get('description') or '').strip()
+        latitude_str = request.form.get('latitude') or json_data.get('latitude')
+        longitude_str = request.form.get('longitude') or json_data.get('longitude')
+        contact = (request.form.get('contact') or json_data.get('contact') or '').strip()
+        citizen_gmail = (request.form.get('gmail') or request.form.get('citizen_gmail') or json_data.get('gmail') or json_data.get('citizen_gmail') or '').strip()
+        current_user = get_current_user_from_request()
+        if not citizen_gmail and current_user and current_user.gmail:
+            citizen_gmail = current_user.gmail.strip()
+        raw_category = (request.form.get('category') or json_data.get('category') or '').strip()
+        raw_priority = (request.form.get('priority') or json_data.get('priority') or '').strip()
 
         if not description or not latitude_str or not longitude_str:
             return jsonify({'error': 'Description, latitude, and longitude are required.'}), 400
@@ -508,13 +512,11 @@ def create_complaint():
         deadline_hours = compute_sla_deadline_hours(category, priority)
         deadline = datetime.now(timezone.utc) + timedelta(hours=deadline_hours)
 
-        # Auto-Assign to Ward Worker if available
-        assigned_worker = User.query.filter_by(role='worker', ward=ward).first()
-        if not assigned_worker:
-            assigned_worker = User.query.filter_by(role='worker').first()
-
-        assigned_to_id = assigned_worker.id if assigned_worker else None
-        initial_status = 'Assigned' if assigned_worker else 'Submitted'
+        # Do NOT automatically assign to worker. 
+        # Ward authorities review incoming complaints in the Authority Dashboard and manually assign workers.
+        assigned_worker = None
+        assigned_to_id = None
+        initial_status = 'Submitted'
 
         # AI Duplicate Check: Find nearby complaints (50m radius)
         duplicate_flag = False
@@ -561,9 +563,9 @@ def create_complaint():
             category=category,
             priority=priority,
             status=initial_status,
-            assigned_to=assigned_to_id,
+            assigned_to=None,
             created_at=now,
-            opened_at=now if assigned_worker else None,
+            opened_at=None,
             deadline=deadline,
             duplicate_of_id=duplicate_of,
             escalation_flag=duplicate_flag,
@@ -588,14 +590,13 @@ def create_complaint():
             db.session.add(evidence)
 
         # Initial Status Log
-        log_status_name = f"Assigned to {assigned_worker.name} ({ward})" if assigned_worker else "Submitted"
         log = StatusLog(
             complaint_id=complaint_id,
             status=initial_status,
             previous_status=None,
-            notes=f"Complaint registered. {log_status_name}",
-            user_name='System Dispatch',
-            user_role='system',
+            notes=f"Complaint registered. Awaiting Ward Authority assignment.",
+            user_name='Citizen Submission',
+            user_role='citizen',
             timestamp=now
         )
         db.session.add(log)
@@ -604,7 +605,7 @@ def create_complaint():
         log_audit(
             action="COMPLAINT_CREATED",
             complaint_id=complaint_id,
-            details=f"Category: {category}, Priority: {priority}, Ward: {ward}, Assigned: {assigned_worker.name if assigned_worker else 'None'}"
+            details=f"Category: {category}, Priority: {priority}, Ward: {ward}, Status: Submitted (Awaiting Authority Assignment)"
         )
 
         # In-App Notification for Corporators in that ward
@@ -645,13 +646,6 @@ def create_complaint():
                     send_geotag_authority_alert(auth.gmail, response_data)
                 except Exception as auth_err:
                     print(f"[WARNING] Geotag authority dispatch email error: {auth_err}")
-
-        # Send Geotag Task Assignment Email to Assigned Worker
-        if assigned_worker and assigned_worker.gmail:
-            try:
-                send_geotag_worker_assignment(assigned_worker.gmail, response_data)
-            except Exception as wrk_err:
-                print(f"[WARNING] Geotag worker dispatch email error: {wrk_err}")
 
         return jsonify(response_data), 201
 
@@ -886,7 +880,7 @@ def update_complaint(id):
         # Enforce worker permission check:
         # A worker should only modify tasks assigned to them
         if current_user and current_user.role == 'worker':
-            if complaint.assigned_to and complaint.assigned_to != current_user.id:
+            if not complaint.assigned_to or complaint.assigned_to != current_user.id:
                 return jsonify({'error': 'Unauthorized: You can only update complaints assigned to you.'}), 403
 
         # Enforce corporator ward permission check
@@ -895,6 +889,7 @@ def update_complaint(id):
                 return jsonify({'error': f"Unauthorized: Corporator belongs to {current_user.ward}, but complaint is in {complaint.ward}."}), 403
 
         # Update assignment
+        new_assigned_worker = None
         if assigned_to is not None:
             if str(assigned_to).strip() == "" or assigned_to == 0:
                 complaint.assigned_to = None
@@ -903,6 +898,8 @@ def update_complaint(id):
                     worker_id = int(assigned_to)
                     worker = User.query.get(worker_id)
                     if worker:
+                        if complaint.assigned_to != worker_id:
+                            new_assigned_worker = worker
                         complaint.assigned_to = worker_id
                         if not status or status == 'Submitted' or status == 'Verified':
                             status = 'Assigned'
@@ -991,10 +988,20 @@ def update_complaint(id):
 
         db.session.commit()
 
-        # Send status update email to citizen if available
+        # Send worker dispatch email if assigned by authority
+        if new_assigned_worker and new_assigned_worker.gmail:
+            try:
+                send_geotag_worker_assignment(new_assigned_worker.gmail, complaint.to_dict())
+            except Exception as wrk_err:
+                print(f"[WARNING] Worker assignment email error: {wrk_err}")
+
+        # Send status update email to the citizen who raised the complaint
         if complaint.citizen_gmail:
             try:
-                send_complaint_status_update_email(complaint.citizen_gmail, complaint.to_dict(), notes)
+                citizen_note = notes
+                if not citizen_note and new_assigned_worker:
+                    citizen_note = f"Your complaint has been assigned to field worker {new_assigned_worker.name}."
+                send_complaint_status_update_email(complaint.citizen_gmail, complaint.to_dict(), citizen_note)
             except Exception as mail_err:
                 print(f"[WARNING] Status update email error: {mail_err}")
 
@@ -1112,6 +1119,18 @@ def reject_complaint(id):
         )
 
         db.session.commit()
+
+        # Send rejection notification email to citizen
+        if complaint.citizen_gmail:
+            try:
+                send_complaint_status_update_email(
+                    complaint.citizen_gmail,
+                    complaint.to_dict(),
+                    notes=f"Complaint was reviewed and rejected by municipal authority. Reason: {reason}"
+                )
+            except Exception as mail_err:
+                print(f"[WARNING] Rejection email error: {mail_err}")
+
         return jsonify(complaint.to_dict()), 200
     except Exception as e:
         db.session.rollback()
@@ -1235,6 +1254,19 @@ def verify_resolution(id):
             return jsonify({'error': "Invalid action. Use 'accept' or 'reject'."}), 400
 
         db.session.commit()
+
+        # Send status update email to citizen acknowledging their feedback/action
+        if complaint.citizen_gmail:
+            try:
+                feedback_msg = (
+                    f"Thank you! You verified and marked this complaint closed with a rating of {complaint.citizen_rating}/5."
+                    if action == 'accept'
+                    else f"Your complaint was marked unsatisfactory and reopened for further municipal action. Reason: {reason}"
+                )
+                send_complaint_status_update_email(complaint.citizen_gmail, complaint.to_dict(), feedback_msg)
+            except Exception as mail_err:
+                print(f"[WARNING] Citizen feedback email error: {mail_err}")
+
         return jsonify(complaint.to_dict()), 200
 
     except Exception as e:
@@ -1563,6 +1595,27 @@ def reassign_complaint(id):
         )
 
         db.session.commit()
+
+        # Send dispatch email to newly reassigned worker
+        if assigned_to:
+            try:
+                reassigned_worker = User.query.get(int(assigned_to))
+                if reassigned_worker and reassigned_worker.gmail:
+                    send_geotag_worker_assignment(reassigned_worker.gmail, complaint.to_dict())
+            except Exception as wrk_err:
+                print(f"[WARNING] Reassigned worker dispatch email error: {wrk_err}")
+
+        # Send update email to citizen
+        if complaint.citizen_gmail:
+            try:
+                send_complaint_status_update_email(
+                    complaint.citizen_gmail,
+                    complaint.to_dict(),
+                    notes=f"Administrative Reassignment: {remarks}"
+                )
+            except Exception as mail_err:
+                print(f"[WARNING] Reassignment citizen email error: {mail_err}")
+
         return jsonify(complaint.to_dict()), 200
     except Exception as e:
         db.session.rollback()
@@ -1992,8 +2045,8 @@ def exotel_webhook():
         ward = 'ward_1'
         latitude, longitude = 12.9716, 77.5946
 
-        assigned_worker = User.query.filter_by(role='worker', ward=ward).first() or User.query.filter_by(role='worker').first()
-        assigned_to_id = assigned_worker.id if assigned_worker else None
+        assigned_worker = None
+        assigned_to_id = None
 
         priority = 'High' if menu_choice == 3 else ('Medium' if menu_choice == 1 else 'Medium')
         deadline_hours = compute_sla_deadline_hours(category, priority)
@@ -2008,19 +2061,20 @@ def exotel_webhook():
             category=category,
             priority=priority,
             deadline=deadline,
-            status='Assigned' if assigned_worker else 'Submitted',
-            assigned_to=assigned_to_id,
+            status='Submitted',
+            assigned_to=None,
             ward=ward,
             created_at=datetime.now(timezone.utc),
-            opened_at=datetime.now(timezone.utc) if assigned_worker else None,
+            opened_at=None,
             citizen_gmail=None
         )
         db.session.add(new_complaint)
 
         log = StatusLog(
             complaint_id=complaint_id,
-            status='Assigned' if assigned_worker else 'Submitted',
-            notes=f"Auto-created via Exotel IVR Call from {caller_phone}",
+            status='Submitted',
+            previous_status=None,
+            notes=f"Complaint logged via Interactive Voice Hotline from {caller_phone}. Awaiting Ward Authority assignment.",
             user_name='IVR Gateway',
             user_role='system',
             timestamp=datetime.now(timezone.utc)

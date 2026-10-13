@@ -1425,7 +1425,10 @@ function initForms() {
         const longitude = document.getElementById('val-longitude').textContent;
         const contact = document.getElementById('form-contact').value;
         const formGmailEl = document.getElementById('form-gmail');
-        const gmail = formGmailEl ? formGmailEl.value.trim() : '';
+        let gmail = formGmailEl ? formGmailEl.value.trim() : '';
+        if (!gmail && currentUser && currentUser.gmail) {
+            gmail = currentUser.gmail.trim();
+        }
         const image = imageInput.files[0];
 
         const formData = new FormData();
@@ -1438,6 +1441,7 @@ function initForms() {
         formData.append('contact', contact);
         if (gmail) {
             formData.append('gmail', gmail);
+            formData.append('citizen_gmail', gmail);
         }
         if (currentUser && currentUser.id) {
             formData.append('citizen_id', currentUser.id);

@@ -128,6 +128,7 @@ class Complaint(db.Model):
             'image_analysis': self.image_analysis,
             'redirected_to_journalist': self.redirected_to_journalist,
             'citizen_gmail': self.citizen_gmail,
+            'gmail': self.citizen_gmail,
             'citizen_rating': self.citizen_rating,
             'citizen_feedback': self.citizen_feedback,
             'citizen_satisfied': self.citizen_satisfied
